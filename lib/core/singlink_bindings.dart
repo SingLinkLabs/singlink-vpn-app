@@ -8,6 +8,8 @@
 //   char* SingLinkProbe(char* url, int timeoutMs);
 //   char* SingLinkExitIP(int timeoutMs);
 //   void  SingLinkFree(char* p);
+//   char* SingLinkTunStart(int fd, char* configJSON);   // app core only (mobile)
+//   char* SingLinkTunStop(void);                        // app core only (mobile)
 //
 // Every char* returned is heap-allocated UTF-8 JSON owned by the core and must
 // be released with SingLinkFree. Several calls block, so use these bindings
@@ -24,6 +26,8 @@ typedef _ProbeC = Pointer<Utf8> Function(Pointer<Utf8>, Int32);
 typedef _ProbeDart = Pointer<Utf8> Function(Pointer<Utf8>, int);
 typedef _IntArgC = Pointer<Utf8> Function(Int32);
 typedef _IntArgDart = Pointer<Utf8> Function(int);
+typedef _TunStartC = Pointer<Utf8> Function(Int32, Pointer<Utf8>);
+typedef _TunStartDart = Pointer<Utf8> Function(int, Pointer<Utf8>);
 typedef _FreeC = Void Function(Pointer<Utf8>);
 typedef _FreeDart = void Function(Pointer<Utf8>);
 
@@ -37,11 +41,22 @@ class SingLinkBindings {
       _status = lib.lookupFunction<_NoArgC, _NoArgC>('SingLinkStatus'),
       _probe = lib.lookupFunction<_ProbeC, _ProbeDart>('SingLinkProbe'),
       _exitIP = lib.lookupFunction<_IntArgC, _IntArgDart>('SingLinkExitIP'),
-      _free = lib.lookupFunction<_FreeC, _FreeDart>('SingLinkFree');
+      _free = lib.lookupFunction<_FreeC, _FreeDart>('SingLinkFree'),
+      _tunStart = lib.providesSymbol('SingLinkTunStart')
+          ? lib.lookupFunction<_TunStartC, _TunStartDart>('SingLinkTunStart')
+          : null,
+      _tunStop = lib.providesSymbol('SingLinkTunStop')
+          ? lib.lookupFunction<_NoArgC, _NoArgC>('SingLinkTunStop')
+          : null;
 
   /// Opens [path] (dlopen caches it, so re-opening per isolate is cheap).
-  factory SingLinkBindings.open(String path) =>
-      SingLinkBindings(DynamicLibrary.open(path));
+  /// [processLibrary] means the core is statically linked into the app
+  /// (iOS); a bare file name is resolved by the OS loader (Android).
+  factory SingLinkBindings.open(String path) => SingLinkBindings(
+    path == processLibrary
+        ? DynamicLibrary.process()
+        : DynamicLibrary.open(path),
+  );
 
   final Pointer<Utf8> Function() _version;
   final Pointer<Utf8> Function(Pointer<Utf8>) _parseLink;
@@ -51,6 +66,11 @@ class SingLinkBindings {
   final Pointer<Utf8> Function(Pointer<Utf8>, int) _probe;
   final Pointer<Utf8> Function(int) _exitIP;
   final void Function(Pointer<Utf8>) _free;
+  final Pointer<Utf8> Function(int, Pointer<Utf8>)? _tunStart;
+  final Pointer<Utf8> Function()? _tunStop;
+
+  /// Whether this build of the core supports device-wide VPN (TUN) mode.
+  bool get hasTun => _tunStart != null && _tunStop != null;
 
   String version() => _take(_version());
   String status() => _take(_status());
@@ -58,6 +78,22 @@ class SingLinkBindings {
   String parseLink(String link) => _withArg(link, _parseLink);
   String start(String configJson) => _withArg(configJson, _start);
   String exitIP(int timeoutMs) => _take(_exitIP(timeoutMs));
+
+  String tunStart(int fd, String configJson) {
+    final f = _tunStart;
+    if (f == null) {
+      return '{"ok":false,"error":"core built without TUN support"}';
+    }
+    return _withArg(configJson, (p) => f(fd, p));
+  }
+
+  String tunStop() {
+    final f = _tunStop;
+    if (f == null) {
+      return '{"ok":false,"error":"core built without TUN support"}';
+    }
+    return _take(f());
+  }
 
   String probe(String url, int timeoutMs) =>
       _withArg(url, (p) => _probe(p, timeoutMs));
@@ -105,13 +141,19 @@ class SingLinkLibLocation {
   String get expectedPath => searched.isEmpty ? libFileName : searched.first;
 }
 
+/// Marker path for a core linked into the app binary itself (iOS).
+const processLibrary = '<process>';
+
 String get libFileName {
   if (Platform.isMacOS || Platform.isIOS) return 'libsinglink.dylib';
   if (Platform.isWindows) return 'singlink.dll';
   return 'libsinglink.so';
 }
 
-/// Candidate locations, in priority order:
+/// Candidate locations, in priority order (desktop). On Android the library
+/// ships in the APK and is opened by name; on iOS it is linked statically.
+///
+/// Desktop order:
 /// 1. the app bundle: `<App>.app/Contents/Frameworks/libsinglink.dylib`
 /// 2. the `SINGLINK_LIB` environment variable (full path to the library)
 /// 3. dev fallbacks: `../singlink-protocol/build/libsinglink.dylib` relative
@@ -127,7 +169,13 @@ List<String> singLinkLibCandidates({
   final exe = File(executable ?? Platform.resolvedExecutable).absolute;
   final env = environment ?? Platform.environment;
   final cwd = workingDirectory ?? Directory.current.path;
+  if (Platform.isAndroid) return [libFileName];
+  if (Platform.isIOS) return [processLibrary];
   final name = libFileName;
+  // The app's own core build (with TUN support) first, then the protocol
+  // repo's plain build.
+  final platformDir = Platform.isWindows ? 'windows' : 'macos';
+  final appRel = 'core${sep}build$sep$platformDir$sep$name';
   final rel = 'singlink-protocol${sep}build$sep$name';
   final out = <String>[];
 
@@ -146,10 +194,12 @@ List<String> singLinkLibCandidates({
   final fromEnv = env['SINGLINK_LIB'];
   if (fromEnv != null && fromEnv.trim().isNotEmpty) add(fromEnv.trim());
 
+  add('$cwd$sep$appRel');
   add('$cwd$sep..$sep$rel');
 
   var dir = exe.parent;
   for (var i = 0; i < 12; i++) {
+    add('${dir.path}${sep}singlink-vpn-app$sep$appRel');
     add('${dir.path}$sep$rel');
     final parent = dir.parent;
     if (parent.path == dir.path) break;
@@ -164,7 +214,8 @@ SingLinkLibLocation locateSingLinkLib({List<String>? candidates}) {
   final searched = candidates ?? singLinkLibCandidates();
   final errors = <String>[];
   for (final p in searched) {
-    if (!File(p).existsSync()) continue;
+    final byName = p == processLibrary || !p.contains(Platform.pathSeparator);
+    if (!byName && !File(p).existsSync()) continue;
     try {
       SingLinkBindings.open(p);
       return SingLinkLibLocation(path: p, searched: searched, errors: errors);

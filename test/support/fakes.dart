@@ -15,6 +15,9 @@ class FakeCore implements VpnCore {
   final bool available;
 
   @override
+  bool usesLocalProxy = true;
+
+  @override
   SingLinkLibLocation get location => SingLinkLibLocation(
     path: available ? '/fake/libsinglink.dylib' : null,
     searched: const [

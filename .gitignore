@@ -46,3 +46,6 @@ app.*.map.json
 
 # Local agent state
 .claude/
+
+# Go core build output
+core/build/

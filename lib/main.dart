@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -6,25 +5,18 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/app_store.dart';
 import 'core/client_controller.dart';
-import 'core/singlink_service.dart';
-import 'core/system_proxy.dart';
+import 'platform/platform_core.dart';
 import 'ui/home_page.dart';
 import 'ui/theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initPlatform();
   // Locating the core never throws; a missing library becomes a UI banner.
   final controller = ClientController(
-    core: SingLinkService.locate(),
+    core: createPlatformCore(),
     store: AppStore.standard(),
-    systemProxy: Platform.isMacOS
-        ? SystemProxyManager(
-            runner: const IoProcessRunner(),
-            journal: ProxyJournal(
-              File('${appSupportDir()}/system-proxy-restore.json'),
-            ),
-          )
-        : null,
+    systemProxy: createSystemProxy(appSupportDir()),
   )..init();
   runApp(SingLinkVpnApp(controller: controller));
 }

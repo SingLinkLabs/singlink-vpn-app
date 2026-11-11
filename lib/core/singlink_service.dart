@@ -17,6 +17,11 @@ import 'singlink_bindings.dart';
 /// implementation; tests and previews substitute a fake.
 abstract class VpnCore {
   bool get available;
+
+  /// True when the core serves a local SOCKS5 port (desktop). Device-wide
+  /// VPN cores (Android VpnService, Apple Network Extension) return false,
+  /// and the port settings are hidden.
+  bool get usesLocalProxy => true;
   SingLinkLibLocation get location;
 
   Future<CoreVersion> version();
@@ -57,6 +62,9 @@ class SingLinkService implements VpnCore {
 
   @override
   bool get available => location.found;
+
+  @override
+  bool get usesLocalProxy => true;
 
   @override
   Future<CoreVersion> version() async =>
