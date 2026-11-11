@@ -188,22 +188,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   const _Section('進階'),
                   _Group(
                     children: [
-                      ListTile(
-                        leading: const Icon(Icons.settings_ethernet_rounded),
-                        title: const Text('本機埠'),
-                        subtitle: Text(
-                          locked ? '請先中斷連線再修改' : '預設 $defaultPort',
+                      if (c.core.usesLocalProxy) ...[
+                        ListTile(
+                          leading: const Icon(Icons.settings_ethernet_rounded),
+                          title: const Text('本機埠'),
+                          subtitle: Text(
+                            locked ? '請先中斷連線再修改' : '預設 $defaultPort',
+                          ),
+                          trailing: Text('${c.port}', style: mono),
+                          enabled: !locked,
+                          onTap: _editPort,
                         ),
-                        trailing: Text('${c.port}', style: mono),
-                        enabled: !locked,
-                        onTap: _editPort,
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.lan_outlined),
-                        title: const Text('本機代理'),
-                        subtitle: const Text('SOCKS5，手動設定用'),
-                        trailing: SelectableText(c.listen, style: mono),
-                      ),
+                        ListTile(
+                          leading: const Icon(Icons.lan_outlined),
+                          title: const Text('本機代理'),
+                          subtitle: const Text('SOCKS5，手動設定用'),
+                          trailing: SelectableText(c.listen, style: mono),
+                        ),
+                      ],
                       ListTile(
                         leading: const Icon(Icons.receipt_long_outlined),
                         title: const Text('連線紀錄'),

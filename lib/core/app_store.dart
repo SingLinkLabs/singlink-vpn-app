@@ -89,10 +89,20 @@ class AppState {
   }
 }
 
+/// Set by platform start-up code where HOME is not meaningful (Android
+/// passes its files directory over a platform channel).
+String? appSupportDirOverride;
+
 /// Base directory for the app's files.
 String appSupportDir() {
+  final override = appSupportDirOverride;
+  if (override != null) return override;
   final home = Platform.environment['HOME'];
-  if (Platform.isMacOS && home != null) {
+  if (Platform.isWindows) {
+    final appData = Platform.environment['APPDATA'];
+    if (appData != null) return '$appData\\SingLinkLabs\\SingLinkVPN';
+  }
+  if ((Platform.isMacOS || Platform.isIOS) && home != null) {
     return '$home/Library/Application Support/com.singlinklabs.singlinkvpn';
   } else if (home != null) {
     return '$home/.config/singlink_vpn';

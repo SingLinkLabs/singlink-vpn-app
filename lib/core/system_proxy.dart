@@ -188,7 +188,26 @@ class ProxyResult {
   String toString() => 'ProxyResult(changed: $changed, failed: $failed)';
 }
 
-class SystemProxyManager {
+/// Points the operating system's proxy settings at the local SOCKS5 port and
+/// puts the previous settings back. One implementation per desktop OS:
+/// [SystemProxyManager] (macOS, networksetup) and the Windows one in
+/// lib/platform/windows.dart.
+abstract class SystemProxy {
+  /// Whether settings are currently changed by us (and need [restore]).
+  bool get isApplied;
+
+  /// Sets the system proxy to the local SOCKS5 port.
+  Future<ProxyResult> enable(int port);
+
+  /// Puts back what [enable] replaced.
+  Future<ProxyResult> restore();
+
+  /// Restores settings left behind by a previous run that was killed.
+  Future<ProxyResult> recover();
+}
+
+/// macOS implementation using `networksetup`.
+class SystemProxyManager implements SystemProxy {
   SystemProxyManager({
     required this.runner,
     this.journal,
@@ -204,6 +223,7 @@ class SystemProxyManager {
 
   Future<void> _queue = Future.value();
 
+  @override
   bool get isApplied => _saved.isNotEmpty;
   Map<String, SocksSetting> get saved => Map.unmodifiable(_saved);
 
@@ -224,6 +244,7 @@ class SystemProxyManager {
   /// Sets SOCKS proxy `host:port` on every enabled service, saving what was
   /// there before. Partial failure leaves the successful services applied
   /// (and remembered for [restore]).
+  @override
   Future<ProxyResult> enable(int port) => _locked(() async {
     final list = await _ns(['-listallnetworkservices']);
     if (!list.ok) {
@@ -272,10 +293,12 @@ class SystemProxyManager {
 
   /// Puts back every saved service's previous settings. Services that fail
   /// stay remembered (and journaled) so a later call can retry.
+  @override
   Future<ProxyResult> restore() => _locked(() => _restoreSaved());
 
   /// Restores settings left in the journal by a previous run that did not
   /// shut down cleanly. Call once at startup.
+  @override
   Future<ProxyResult> recover() => _locked(() async {
     final j = journal;
     if (j == null) return const ProxyResult();

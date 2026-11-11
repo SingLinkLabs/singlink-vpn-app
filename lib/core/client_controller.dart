@@ -41,7 +41,7 @@ class ClientController extends ChangeNotifier {
   final AppStore store;
 
   /// Null where system-wide mode is unsupported (non-macOS, tests).
-  final SystemProxyManager? systemProxy;
+  final SystemProxy? systemProxy;
 
   /// Injectable for deterministic tests / goldens.
   final DateTime Function() clock;
@@ -302,7 +302,12 @@ class ClientController extends ChangeNotifier {
     _sampleAt = null;
     _state.lastUsedId = profile.id;
     await _save();
-    log('已連線「${profile.displayName}」（本機代理 ${_state.listen}）', LogLevel.success);
+    log(
+      core.usesLocalProxy
+          ? '已連線「${profile.displayName}」（本機代理 ${_state.listen}）'
+          : '已連線「${profile.displayName}」（全裝置 VPN）',
+      LogLevel.success,
+    );
     _startPolling();
     unawaited(_fetchExitIp());
     unawaited(measureLatency());

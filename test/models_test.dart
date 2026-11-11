@@ -170,34 +170,38 @@ void main() {
     expect((await svc.exitIP()).ok, isFalse);
   });
 
-  test('library candidates: bundle, SINGLINK_LIB, then sibling protocol repo', () {
-    final c = singLinkLibCandidates(
-      executable:
-          '/x/singlink-vpn-app/build/macos/Build/Products/Debug/SingLinkVPN.app/Contents/MacOS/SingLinkVPN',
-      environment: {'SINGLINK_LIB': '/opt/libsinglink.dylib'},
-      workingDirectory: '/x/singlink-vpn-app',
-    );
-    if (Platform.isMacOS) {
-      expect(
-        c[0],
-        '/x/singlink-vpn-app/build/macos/Build/Products/Debug/SingLinkVPN.app/Contents/Frameworks/libsinglink.dylib',
+  test(
+    'library candidates: bundle, SINGLINK_LIB, app core, then protocol repo',
+    () {
+      final c = singLinkLibCandidates(
+        executable:
+            '/x/singlink-vpn-app/build/macos/Build/Products/Debug/SingLinkVPN.app/Contents/MacOS/SingLinkVPN',
+        environment: {'SINGLINK_LIB': '/opt/libsinglink.dylib'},
+        workingDirectory: '/x/singlink-vpn-app',
       );
-      expect(c[1], '/opt/libsinglink.dylib');
-      expect(c[2], '/x/singlink-protocol/build/libsinglink.dylib');
-      expect(c.toSet().length, c.length);
-      expect(
-        c.where(
-          (p) => p.endsWith('/singlink-protocol/build/libsinglink.dylib'),
-        ),
-        isNotEmpty,
+      if (Platform.isMacOS) {
+        expect(
+          c[0],
+          '/x/singlink-vpn-app/build/macos/Build/Products/Debug/SingLinkVPN.app/Contents/Frameworks/libsinglink.dylib',
+        );
+        expect(c[1], '/opt/libsinglink.dylib');
+        expect(c[2], '/x/singlink-vpn-app/core/build/macos/libsinglink.dylib');
+        expect(c[3], '/x/singlink-protocol/build/libsinglink.dylib');
+        expect(c.toSet().length, c.length);
+        expect(
+          c.where(
+            (p) => p.endsWith('/singlink-protocol/build/libsinglink.dylib'),
+          ),
+          isNotEmpty,
+        );
+      }
+      final loc = locateSingLinkLib(
+        candidates: ['/nonexistent/libsinglink.dylib'],
       );
-    }
-    final loc = locateSingLinkLib(
-      candidates: ['/nonexistent/libsinglink.dylib'],
-    );
-    expect(loc.found, isFalse);
-    expect(loc.expectedPath, '/nonexistent/libsinglink.dylib');
-  });
+      expect(loc.found, isFalse);
+      expect(loc.expectedPath, '/nonexistent/libsinglink.dylib');
+    },
+  );
 
   test('validatePort', () {
     expect(validatePort('1080'), isNull);
