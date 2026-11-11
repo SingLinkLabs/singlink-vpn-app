@@ -74,6 +74,16 @@ void main() {
         ).message,
         msgRejected,
       );
+      expect(
+        friendlyError(
+          'cannot reach node: singlink: node rejected the credentials (check the device clock, then renew the link)',
+        ).message,
+        msgRejected,
+      );
+      expect(
+        friendlyError('singlink: bad server key in link').message,
+        msgBadLink,
+      );
       expect(friendlyError('token not yet valid').message, msgNotYetValid);
       expect(
         friendlyError(
