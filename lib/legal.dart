@@ -6,13 +6,13 @@ import 'package:flutter/foundation.dart';
 /// Attribution required by NOTICE (Apache License 2.0, section 4(d)).
 /// Redistributions and derivative works must keep this text.
 const kAttribution =
-    'Based on the SingLinkVPN prototype and the SingLink Protocol by SingLinkLabs\n'
+    'Based on the SingLinkVPN prototype and the SingLink Beta Protocol by SingLinkLabs\n'
     'https://github.com/SingLinkLabs/singlink-vpn-app';
 
 const kCopyright = '© 2026 SingLinkLabs · Apache-2.0';
 
 /// Shown at the bottom of the main screen. Required attribution: see NOTICE.
-const kMadeBy = 'Made by SingLinkVPN · Powered by the SingLink Protocol';
+const kMadeBy = 'Made by SingLinkVPN · Powered by the SingLink Beta Protocol';
 
 const _notice =
     '''SingLinkVPN — first-generation client
@@ -23,7 +23,7 @@ $kAttribution
 
 "SingLink", "SingLinkVPN", their Chinese names and the logo are trademarks of SingLinkLabs.
 
-Includes the SingLink Protocol (https://github.com/SingLinkLabs/singlink-protocol, Apache-2.0) and gVisor (https://gvisor.dev, Apache-2.0).''';
+Includes the SingLink Beta Protocol (https://github.com/SingLinkLabs/singlink-protocol, Apache-2.0) and gVisor (https://gvisor.dev, Apache-2.0).''';
 
 bool _registered = false;
 
@@ -35,7 +35,7 @@ void registerAppLicenses() {
   LicenseRegistry.addLicense(() async* {
     yield const LicenseEntryWithLineBreaks([
       'SingLinkVPN',
-      'SingLink Protocol',
+      'SingLink Beta Protocol',
     ], _notice);
   });
 }
