@@ -1,5 +1,5 @@
 name: singlink_vpn
-description: "SingLinkVPN first-generation client for Windows, macOS, Android and iOS (Flutter UI over the SingLink Protocol core via FFI)."
+description: "SingLinkVPN first-generation client for Windows, macOS, Android and iOS (Flutter UI over the SingLink Beta Protocol core via FFI)."
 publish_to: 'none'
 version: 0.1.0+1
 
