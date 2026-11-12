@@ -2,7 +2,7 @@
 # Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
 # SPDX-License-Identifier: Apache-2.0
 
-# Copies the SingLink Protocol core (libsinglink.dylib) into <App>.app/Contents/Frameworks
+# Copies the SingLink Beta Protocol core (libsinglink.dylib) into <App>.app/Contents/Frameworks
 # and code-signs it.
 #
 # Two modes:
