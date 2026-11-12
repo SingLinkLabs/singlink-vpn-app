@@ -25,18 +25,28 @@ class OpResult {
       OpResult(json['ok'] == true, _str(json['error']));
 }
 
-/// `SingLinkVersion`: `{"version":"1.0.0-draft","protocol":"SingLink/1"}`.
+/// `SingLinkVersion`:
+/// `{"version":"1.0.0-draft","protocol":"SingLink/1","attribution":"..."}`.
 class CoreVersion {
-  const CoreVersion(this.version, this.protocol);
+  const CoreVersion(this.version, this.protocol, [this.attribution = '']);
 
   final String version;
   final String protocol;
 
-  factory CoreVersion.fromJson(Map<String, dynamic> json) =>
-      CoreVersion(_str(json['version']), _str(json['protocol']));
+  /// Attribution compiled into the native core (see NOTICE).
+  final String attribution;
+
+  factory CoreVersion.fromJson(Map<String, dynamic> json) => CoreVersion(
+    _str(json['version']),
+    _str(json['protocol']),
+    _str(json['attribution']),
+  );
 
   @override
-  String toString() => protocol.isEmpty ? version : '$version · $protocol';
+  String toString() {
+    final v = protocol.isEmpty ? version : '$version · $protocol';
+    return attribution.isEmpty ? v : '$v · $attribution';
+  }
 }
 
 /// `SingLinkStatus`.

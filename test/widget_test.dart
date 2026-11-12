@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:singlink_vpn/core/client_controller.dart';
 import 'package:singlink_vpn/core/singlink_service.dart';
+import 'package:singlink_vpn/legal.dart';
 import 'package:singlink_vpn/main.dart';
 
 import 'support/fakes.dart';
@@ -49,6 +50,8 @@ void main() {
     expect(find.text('Download'), findsOneWidget);
     expect(find.text('Upload'), findsOneWidget);
     expect(find.byTooltip('Settings'), findsOneWidget);
+    // Required attribution (NOTICE).
+    expect(find.text(kMadeBy), findsOneWidget);
 
     for (final jargon in [
       'SOCKS',
