@@ -35,7 +35,7 @@ android:
 	  abi=$${t%%:*}; rest=$${t#*:}; arch=$${rest%%:*}; triple=$${rest#*:}; \
 	  mkdir -p build/android/$$abi; \
 	  CGO_ENABLED=1 GOOS=android GOARCH=$$arch GOARM=7 CC=$(NDK_BIN)/$${triple}$(ANDROID_API)-clang \
-	    $(GO) build -trimpath -buildmode=c-shared -ldflags='$(LDF) -extldflags=-Wl,-soname,libsinglink.so' -o build/android/$$abi/libsinglink.so ./ffi || exit 1; \
+	    $(GO) build -trimpath -buildmode=c-shared -ldflags='$(LDF) -extldflags=-Wl,-soname,libsinglink.so,-z,max-page-size=16384' -o build/android/$$abi/libsinglink.so ./ffi || exit 1; \
 	  $(RM) build/android/$$abi/libsinglink.h; \
 	done
 

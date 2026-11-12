@@ -1,14 +1,31 @@
-# 星連VPN — macOS client (`singlink_vpn`)
+# 星連VPN — first-generation prototype client (`singlink_vpn`)
 
-Consumer-VPN-style Flutter app over the SingLink Protocol core `libsinglink`
-(C ABI, loaded via `dart:ffi`). The protocol lives in its own repository,
-`../singlink-protocol`; this repo only contains the app.
+**星連VPN 初代原型 / the first-generation prototype of SingLinkVPN.** A
+consumer-VPN-style Flutter app for Windows, macOS, Android and iOS, built on
+the open [SingLink Protocol](https://github.com/SingLinkLabs/singlink-protocol)
+core. Published as a reference client and prototype; it is not the shipping
+星連VPN product.
 
-- Bundle: `SingLinkVPN.app`, id `com.singlinklabs.singlinkvpn`, display name 「星連VPN」
-- UI language: Traditional Chinese (Hong Kong)
-- macOS is the supported target; `android/` and `ios/` are scaffolding only.
+| Platform | Mode | Status |
+|---|---|---|
+| macOS 13+ (Apple silicon) | system proxy (SOCKS5 via `networksetup`) | built and tested end to end |
+| Windows 10/11 x64 | system proxy (HTTP proxy via WinINet registry) | core DLL built; app builds in CI on Windows |
+| Android 7+ (arm64, armv7, x86_64) | device-wide VPN (`VpnService` + core TUN) | built and tested end to end on the emulator |
+| iOS 15+ | device-wide VPN (Network Extension packet tunnel) | builds; running on a device needs an Apple Developer team |
+
+- `core/`: the app's Go module (SingLink Protocol + the gVisor user-space
+  TCP/IP stack for TUN mode) built into `libsinglink` for every platform
+  (`make -C core macos|android|ios|windows`).
+- Bundle id `com.singlinklabs.singlinkvpn`, display name 「星連VPN」, UI in
+  Traditional Chinese.
 - Plugin-free (only `ffi` + `flutter_localizations`), so it builds without
   CocoaPods or Swift Package Manager.
+- License: Apache-2.0 (see `LICENSE`, `NOTICE`). "星連", "SingLink" and
+  "SingLinkVPN" are trademarks of SingLinkLabs: forks must use their own name
+  and icon.
+
+Screenshots: `test/goldens/` (desktop), `docs/screenshots/android/`,
+`docs/screenshots/ios/`.
 
 ## What the user sees
 
@@ -33,9 +50,10 @@ Screenshots (rendered by `test/golden_test.dart` with fake data):
 `main_disconnected_{light,dark}.png`, `location_sheet_light.png`,
 `settings_light.png`.
 
-## System-wide mode — what it is and is not
+## Desktop system-wide mode (macOS, Windows) — what it is and is not
 
-This is **system proxy mode**, not a packet-level VPN:
+On desktop this is **system proxy mode**, not a packet-level VPN (Android and
+iOS use a real device-wide VPN, see their sections):
 
 - When 「系統全局代理」 is on, after the core starts, the app sets the macOS
   SOCKS proxy of every enabled network service to `127.0.0.1:<port>` with
@@ -57,11 +75,10 @@ This is **system proxy mode**, not a packet-level VPN:
   `ProcessRunner`, and the tests use a fake runner — the test suite never
   changes the machine's network settings.
 
-**Next step (not implemented): a real VPN.** Capturing all traffic (TCP + UDP,
-including apps that ignore proxy settings) needs a packet tunnel:
-a Network Extension `NEPacketTunnelProvider` on macOS/iOS (requires an Apple
-Developer team and the Network Extension entitlement, plus a tun2socks-style
-layer in the core) or `VpnService` on Android.
+**Next step on desktop:** a packet-level VPN that also covers apps ignoring the
+proxy settings — a Network Extension on macOS (the iOS packet tunnel and the
+core's TUN bridge can be reused; needs an Apple Developer team) and Wintun on
+Windows.
 
 ## Build
 
@@ -268,3 +285,21 @@ goldens informational), windows (MinGW `singlink.dll`, real-registry test,
 `singlink-vpn-app/` and `SingLinkLabs/singlink-protocol` to
 `singlink-protocol/` so `core/go.mod`'s `../../singlink-protocol` resolves;
 the `PROTOCOL_REPO_TOKEN` secret is needed only while that repo is private.
+
+## Android (device-wide VPN)
+
+- `lib/platform/android.dart` (`AndroidVpnCore`) asks Kotlin over the channel
+  `com.singlinklabs.singlinkvpn/vpn` for VPN consent (`VpnService.prepare`),
+  then establishes the TUN in `SingLinkVpnService` (172.19.0.1/30 +
+  fdfe:dcba:9876::1/126, default routes, DNS 172.19.0.2, the app itself
+  excluded so the core's own sockets bypass the VPN), and hands the detached
+  fd to the core with `SingLinkTunStart`.
+- Foreground service with the notification 「星連VPN 已連線」; a revoke by the
+  system or another VPN stops the core and the app shows 「連線已中斷」.
+- Build: `make -C core android` (NDK; the Gradle build runs it if the `.so`
+  files are missing), then `flutter build apk --release`. Libraries are
+  16 KB-page aligned for Android 15+ devices. Release builds are signed with
+  the debug key until a release keystore is configured.
+- Known Flutter quirk: rebuilding in a path with a space can fail on the
+  depfile; delete `build/app/intermediates/flutter/*/flutter_build.d` (or run
+  `flutter clean`) first.
