@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // Android: device-wide VPN through VpnService.
 //
 // Kotlin (android/app/src/main/kotlin/.../SingLinkVpnService.kt) asks for the

@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // High-level async wrapper over libsinglink.
 //
 // Every core call runs in a short-lived background isolate (Isolate.run) that

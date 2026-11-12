@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // Windows: system proxy through the per-user WinINet settings in the registry
 // (HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings), the
 // same switches as Settings > Network & Internet > Proxy.

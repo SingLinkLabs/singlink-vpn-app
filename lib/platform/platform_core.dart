@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // Chooses the protocol core and system integration for the running
 // platform. Each platform's details live in its own file in this folder:
 //

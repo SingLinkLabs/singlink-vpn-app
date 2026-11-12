@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';

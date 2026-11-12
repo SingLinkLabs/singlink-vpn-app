@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // MethodChannel `com.singlinklabs.singlinkvpn/vpn`: the Dart IosTunnelCore
 // (lib/platform/ios.dart) drives the packet tunnel extension
 // (ios/PacketTunnel, bundle id com.singlinklabs.singlinkvpn.tunnel) through

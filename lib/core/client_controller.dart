@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // App state + orchestration: servers, connect/disconnect, system proxy,
 // 1 s status poll, exit IP, latency, log. The UI only listens to this
 // ChangeNotifier.

@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // Command ffi builds libsinglink for the SingLinkVPN apps: the protocol's C ABI
 // (SingLinkStart, SingLinkStatus, ...) plus the device-wide VPN entry points
 // used on Android and iOS/macOS (SingLinkTunStart, SingLinkTunStop).

@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // Renders the main screen with fake data so the owner can look at it without
 // running the app. Regenerate after UI changes:
 //   flutter test --update-goldens test/golden_test.dart

@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 /// Turns the core's technical error strings into short, plain English
 /// messages for people who do not know what a "handshake" is. The raw text is
 /// kept as [FriendlyError.detail] for support.

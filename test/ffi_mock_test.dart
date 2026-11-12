@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // Exercises the real FFI + isolate path against a C mock of libsinglink
 // compiled on the fly. Skipped when no C compiler is available.
 import 'dart:io';

@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // Real-registry round trip for WindowsSystemProxy: runs the actual reg.exe
 // and InternetSetOptionW. It changes the current user's proxy settings for a
 // moment, so it only runs on Windows with SINGLINK_WINDOWS_REGISTRY_TEST=1

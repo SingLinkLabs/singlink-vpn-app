@@ -1,13 +1,35 @@
 SingLinkVPN — first-generation prototype client
 Copyright 2026 SingLinkLabs
+https://github.com/SingLinkLabs/singlink-vpn-app
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-"SingLink", "SingLinkVPN", their Chinese names (星連, 星连) and the logo are
-trademarks of SingLinkLabs. The license does not grant permission to use
-these names or marks, except as required to describe the origin of the work
-(Apache License 2.0, section 6). Forks must use a different name and icon.
+Attribution
+-----------
+Section 4 of the Apache License 2.0 applies to every redistribution of this
+work or of any work derived from it, in source or binary form (including apps
+published in app stores). You must:
 
+  1. keep the copyright and license headers at the top of each source file;
+  2. include a copy of the LICENSE file;
+  3. mark the files you changed; and
+  4. include this NOTICE file, or reproduce its attribution text, in your
+     NOTICE file, in your documentation, or where your app shows third-party
+     notices (this app shows it under Settings > About > Licenses):
+
+     Based on the SingLinkVPN prototype and the SingLink Protocol by SingLinkLabs
+     https://github.com/SingLinkLabs/singlink-vpn-app
+
+Trademarks
+----------
+"SingLink", "SingLinkVPN", their Chinese names (星連, 星连) and the logo are
+trademarks of SingLinkLabs. The license does not grant permission to use these
+names or marks, except as required to describe the origin of the work (Apache
+License 2.0, section 6). Forks must use a different name and icon and must not
+be presented as an official SingLinkLabs product.
+
+Third-party software
+--------------------
 This product includes software developed by the gVisor Authors
 (https://gvisor.dev, Apache License 2.0), used for the user-space TCP/IP
 stack of the device-wide VPN mode.
