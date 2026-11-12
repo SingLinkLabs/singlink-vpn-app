@@ -1,4 +1,4 @@
-# Builds 星連VPN for every platform and runs the tests.
+# Builds SingLinkVPN for every platform and runs the tests.
 #
 # Layout on every runner (the core's go.mod has
 # `replace github.com/SingLinkLabs/singlink-protocol => ../../singlink-protocol`,
