@@ -13,7 +13,7 @@ static char *dup(const char *s) {
   return p;
 }
 
-char *SingLinkVersion(void) { return dup("{\"version\":\"1.0.0-mock\",\"protocol\":\"SingLink/1\"}"); }
+char *SingLinkVersion(void) { return dup("{\"version\":\"1.0.0-mock\",\"protocol\":\"SingLink Beta\"}"); }
 
 char *SingLinkParseLink(char *link) {
   if (strncmp(link, "singlink://", 11) != 0) return dup("{\"ok\":false,\"error\":\"not a singlink link\"}");
