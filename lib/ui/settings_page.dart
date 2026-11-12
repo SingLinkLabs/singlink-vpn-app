@@ -244,7 +244,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         trailing: Text(
                           c.coreVersion?.protocol.isNotEmpty == true
                               ? c.coreVersion!.protocol
-                              : 'SingLink Protocol',
+                              : 'SingLink Beta Protocol',
                           style: mono,
                         ),
                       ),
