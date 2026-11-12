@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // Raw Dart FFI bindings for the libsinglink C ABI (Go `-buildmode=c-shared`).
 //
 //   char* SingLinkVersion(void);

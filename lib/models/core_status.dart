@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 /// Parsed replies of the libsinglink C ABI (everything except `SingLinkParseLink`,
 /// which lives in `profile.dart`).
 library;

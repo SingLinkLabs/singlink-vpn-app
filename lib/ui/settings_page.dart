@@ -1,8 +1,12 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_store.dart';
 import '../core/client_controller.dart';
+import '../legal.dart';
 import '../models/location.dart';
 import '../models/profile.dart';
 import 'format.dart';
@@ -242,6 +246,17 @@ class _SettingsPageState extends State<SettingsPage> {
                               ? c.coreVersion!.protocol
                               : 'SingLink Protocol',
                           style: mono,
+                        ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.description_outlined),
+                        title: const Text('Licenses'),
+                        subtitle: const Text(kCopyright),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => showLicensePage(
+                          context: context,
+                          applicationName: 'SingLinkVPN',
+                          applicationLegalese: kAttribution,
                         ),
                       ),
                     ],

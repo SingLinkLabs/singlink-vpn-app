@@ -1,4 +1,7 @@
 #!/usr/bin/env ruby
+# Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+# SPDX-License-Identifier: Apache-2.0
+
 # Adds the iOS device-wide VPN to ios/Runner.xcodeproj (idempotent):
 #
 #   * PacketTunnel app extension target (ios/PacketTunnel, Swift,

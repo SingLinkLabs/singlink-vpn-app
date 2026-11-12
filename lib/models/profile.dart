@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 /// An imported `singlink://` server profile.
 ///
 /// The fields mirror the `profile` object returned by `SingLinkParseLink`; the

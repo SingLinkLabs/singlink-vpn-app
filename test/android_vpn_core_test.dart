@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // AndroidVpnCore against a mocked Kotlin channel and a fake FFI layer: the
 // order of consent → TUN → core calls, failure clean-up, and revoke handling.
 import 'dart:convert';

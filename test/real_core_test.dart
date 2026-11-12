@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // End-to-end test against the real Go core and a live SingLink node.
 //
 // Skipped unless both are provided:

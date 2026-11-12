@@ -20,7 +20,11 @@ SingLinkVPN product.
   English only.
 - Plugin-free (only `ffi`), so it builds without
   CocoaPods or Swift Package Manager.
-- License: Apache-2.0 (see `LICENSE`, `NOTICE`). "星連", "SingLink" and
+- License: Apache-2.0 (see `LICENSE`, `NOTICE`). Redistributions and derivative
+  works must keep the source-file copyright headers and the NOTICE attribution
+  ("Based on the SingLinkVPN prototype and the SingLink Protocol by
+  SingLinkLabs"); the app shows it under Settings > About > Licenses.
+  "星連", "SingLink" and
   "SingLinkVPN" are trademarks of SingLinkLabs: forks must use their own name
   and icon.
 

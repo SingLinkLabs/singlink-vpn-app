@@ -1,15 +1,20 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
 import 'core/app_store.dart';
 import 'core/client_controller.dart';
+import 'legal.dart';
 import 'platform/platform_core.dart';
 import 'ui/home_page.dart';
 import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerAppLicenses();
   await initPlatform();
   // Locating the core never throws; a missing library becomes a UI banner.
   final controller = ClientController(

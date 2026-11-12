@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 /// Maps a server's profile name (e.g. "Hong Kong 01", "Tokyo-2", "US LA 3") to
 /// a country flag and an English display city, the way consumer VPN apps list locations.
 library;

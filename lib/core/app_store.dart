@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // Persists servers and settings as one JSON file.
 //
 // Plugin-free on purpose (shared_preferences on macOS would need CocoaPods or

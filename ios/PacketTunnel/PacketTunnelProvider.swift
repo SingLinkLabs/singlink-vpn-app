@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // SingLinkVPN packet tunnel: the device-wide VPN on iOS.
 //
 // The system creates a utun interface for this extension; every IP packet

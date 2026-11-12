@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// SPDX-License-Identifier: Apache-2.0
+
 // macOS "system-wide" mode: points the SOCKS proxy of every enabled network
 // service at the core's local port with /usr/sbin/networksetup, and puts the
 // previous settings back afterwards.
