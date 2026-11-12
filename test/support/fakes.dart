@@ -40,7 +40,7 @@ class FakeCore implements VpnCore {
 
   @override
   Future<CoreVersion> version() async =>
-      const CoreVersion('1.0.0-draft', 'SingLink/1');
+      const CoreVersion('1.0.0-draft', 'SingLink Beta');
 
   @override
   Future<ParseLinkResult> parseLink(String link) async {
