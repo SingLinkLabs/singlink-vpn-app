@@ -12,4 +12,4 @@ first-generation prototype, not the shipping SingLinkVPN product.
 
 Problems in the protocol itself (handshake, tokens, encryption, server
 behaviour) belong to the
-[SingLink Protocol repository](https://github.com/SingLinkLabs/singlink-protocol/security).
+[SingLink Beta Protocol repository](https://github.com/SingLinkLabs/singlink-protocol/security).

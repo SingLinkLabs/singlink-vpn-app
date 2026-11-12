@@ -4,8 +4,8 @@
 
 - **What:** the SingLinkVPN first-generation client for Windows, macOS,
   Android and iOS: one Flutter (Dart) codebase with a Go core built on the
-  [SingLink Protocol](https://github.com/SingLinkLabs/singlink-protocol),
-  first generation (`SingLink/1`). Device-wide VPN on mobile, system proxy on
+  [SingLink Beta Protocol](https://github.com/SingLinkLabs/singlink-protocol),
+  first generation. Device-wide VPN on mobile, system proxy on
   desktop.
 - **License:** Apache-2.0, with a required NOTICE attribution.
   "SingLink", "SingLinkVPN", 星連/星连 and the logo are trademarks of
@@ -26,7 +26,7 @@
 ## Background
 
 The SingLink protocol has evolved from SingLinkVPN's early versions and SingLink Beta to
-today's SingLink 2.0. The open-source "SingLink Protocol, first generation" and
+today's SingLink 2.0. The open-source "SingLink Beta Protocol, first generation" and
 "SingLinkVPN first-generation client" carry forward SingLinkVPN's
 long-standing design principles (account-based permissions, device binding
 and security by design) and were released after a security audit. The
@@ -38,7 +38,7 @@ poses no security risk, and the open-source plan will continue.
 
 **The first-generation SingLinkVPN client.** A
 consumer-VPN-style Flutter app for Windows, macOS, Android and iOS, built on
-the open [SingLink Protocol](https://github.com/SingLinkLabs/singlink-protocol)
+the open [SingLink Beta Protocol](https://github.com/SingLinkLabs/singlink-protocol)
 core.
 
 | Platform | Mode | Status |
@@ -48,7 +48,7 @@ core.
 | Android 7+ (arm64, armv7, x86_64) | device-wide VPN (`VpnService` + core TUN) | built and tested end to end on the emulator |
 | iOS 15+ | device-wide VPN (Network Extension packet tunnel) | builds; running on a device needs an Apple Developer team |
 
-- `core/`: the app's Go module (SingLink Protocol + the gVisor user-space
+- `core/`: the app's Go module (SingLink Beta Protocol + the gVisor user-space
   TCP/IP stack for TUN mode) built into `libsinglink` for every platform
   (`make -C core macos|android|ios|windows`).
 - Bundle id `com.singlinklabs.singlinkvpn`, display name "SingLinkVPN", UI in
@@ -57,7 +57,7 @@ core.
   CocoaPods or Swift Package Manager.
 - License: Apache-2.0 (see `LICENSE`, `NOTICE`). Redistributions and derivative
   works must keep the source-file copyright headers and the NOTICE attribution
-  ("Based on the SingLinkVPN prototype and the SingLink Protocol by
+  ("Based on the SingLinkVPN prototype and the SingLink Beta Protocol by
   SingLinkLabs"); the app shows it under Settings > About > Licenses.
   "星連", "SingLink" and
   "SingLinkVPN" are trademarks of SingLinkLabs: forks must use their own name
