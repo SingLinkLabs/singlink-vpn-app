@@ -66,7 +66,7 @@ class _ErrorNoticeState extends State<ErrorNotice> {
                           child: Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              '顯示詳細資訊',
+                              'Show details',
                               style: text.labelSmall?.copyWith(
                                 color: fg,
                                 decoration: TextDecoration.underline,
@@ -80,7 +80,7 @@ class _ErrorNoticeState extends State<ErrorNotice> {
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            tooltip: '關閉',
+            tooltip: 'Close',
             icon: Icon(Icons.close_rounded, color: fg, size: 18),
             onPressed: widget.onClose,
           ),
@@ -156,7 +156,7 @@ class CoreMissingBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '找不到核心元件 libsinglink.dylib',
+                  'Core library libsinglink.dylib not found',
                   style: text.titleSmall?.copyWith(
                     color: cs.onErrorContainer,
                     fontWeight: FontWeight.w700,
@@ -164,7 +164,7 @@ class CoreMissingBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '介面可以開啟，但無法新增伺服器或連線。請將核心放到以下路徑：',
+                  "The app opens, but you can't add servers or connect. Put the core library here:",
                   style: text.bodySmall?.copyWith(color: cs.onErrorContainer),
                 ),
                 const SizedBox(height: 6),
@@ -172,8 +172,8 @@ class CoreMissingBanner extends StatelessWidget {
                 if (location.searched.length > 1) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '或設定環境變數 SINGLINK_LIB，或於開發時放在 '
-                    '../singlink-protocol/build/。已搜尋：',
+                    'Or set the SINGLINK_LIB environment variable, or during development '
+                    'put it in ../singlink-protocol/build/. Searched:',
                     style: text.bodySmall?.copyWith(color: cs.onErrorContainer),
                   ),
                   const SizedBox(height: 4),
@@ -185,7 +185,7 @@ class CoreMissingBanner extends StatelessWidget {
                 if (location.errors.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '載入錯誤：',
+                    'Load errors:',
                     style: text.bodySmall?.copyWith(color: cs.onErrorContainer),
                   ),
                   SelectableText(location.errors.join('\n'), style: mono),

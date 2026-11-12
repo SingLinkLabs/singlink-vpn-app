@@ -67,7 +67,7 @@ class MainActivity : FlutterActivity() {
     private fun prepare(result: MethodChannel.Result) {
         pendingPrepare?.success(false)
         pendingPrepare = result
-        // Android 13+: ask once for notifications so the 「已連線」 notice is
+        // Android 13+: ask once for notifications so the "connected" notice is
         // visible; the VPN works either way.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=

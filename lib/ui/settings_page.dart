@@ -13,7 +13,7 @@ class SettingsPage extends StatefulWidget {
 
   final ClientController c;
 
-  /// Open the 「新增伺服器」 dialog right away (first run, empty list).
+  /// Open the "Add server" dialog right away (first run, empty list).
   final bool openAddServer;
 
   @override
@@ -41,7 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (added == true && mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('已新增伺服器')));
+      ).showSnackBar(const SnackBar(content: Text('Server added')));
     }
   }
 
@@ -50,22 +50,22 @@ class _SettingsPageState extends State<SettingsPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('刪除伺服器'),
+        title: const Text('Delete server'),
         content: Text(
-          '要從列表移除「${loc.flag} ${p.displayName}」嗎？'
-          '${c.connectedId == p.id ? '\n目前正在使用，會先中斷連線。' : ''}',
+          'Remove "${loc.flag} ${p.displayName}" from your list?'
+          '${c.connectedId == p.id ? '\nYou are connected to it, so it will disconnect first.' : ''}',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('刪除'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -92,7 +92,7 @@ class _SettingsPageState extends State<SettingsPage> {
           }
 
           return AlertDialog(
-            title: const Text('本機埠'),
+            title: const Text('Local port'),
             content: TextField(
               controller: ctrl,
               autofocus: true,
@@ -102,20 +102,21 @@ class _SettingsPageState extends State<SettingsPage> {
               decoration: InputDecoration(
                 hintText: '$defaultPort',
                 errorText: error,
-                helperText: '預設 $defaultPort。只有被其他程式佔用時才需要更改。',
+                helperText:
+                    'Default $defaultPort. Change it only if another app is using it.',
                 helperMaxLines: 2,
               ),
             ),
             actions: [
               TextButton(
                 onPressed: () => ctrl.text = '$defaultPort',
-                child: const Text('還原預設'),
+                child: const Text('Reset to default'),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
+                child: const Text('Cancel'),
               ),
-              FilledButton(onPressed: save, child: const Text('儲存')),
+              FilledButton(onPressed: save, child: const Text('Save')),
             ],
           );
         },
@@ -136,14 +137,14 @@ class _SettingsPageState extends State<SettingsPage> {
           color: cs.onSurfaceVariant,
         );
         return Scaffold(
-          appBar: AppBar(title: const Text('設定')),
+          appBar: AppBar(title: const Text('Settings')),
           body: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                 children: [
-                  const _Section('伺服器'),
+                  const _Section('Servers'),
                   _Group(
                     children: [
                       ListTile(
@@ -151,8 +152,10 @@ class _SettingsPageState extends State<SettingsPage> {
                           Icons.add_circle_rounded,
                           color: cs.primary,
                         ),
-                        title: const Text('新增伺服器'),
-                        subtitle: const Text('貼上連結或從剪貼簿匯入'),
+                        title: const Text('Add server'),
+                        subtitle: const Text(
+                          'Paste a link or import from the clipboard',
+                        ),
                         enabled: c.coreAvailable,
                         onTap: _addServer,
                       ),
@@ -163,20 +166,20 @@ class _SettingsPageState extends State<SettingsPage> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
                       child: Text(
-                        '伺服器列表是空的。新增後即可在主畫面選擇地區並連線。',
+                        'Your server list is empty. Add a server, then choose a location on the main screen and connect.',
                         style: TextStyle(color: cs.onSurfaceVariant),
                       ),
                     ),
-                  const _Section('連線'),
+                  const _Section('Connection'),
                   _Group(
                     children: [
                       SwitchListTile(
                         secondary: const Icon(Icons.public_rounded),
-                        title: const Text('系統全局代理'),
+                        title: const Text('System-wide proxy'),
                         subtitle: Text(
                           c.systemProxySupported
-                              ? '連線時讓整台電腦的 App 經由星連VPN，中斷連線或關閉 App 時自動還原原本的設定'
-                              : '此平台尚未支援',
+                              ? 'Route every app through SingLinkVPN while connected. Your settings are restored when you disconnect or quit.'
+                              : 'Not supported on this platform yet',
                         ),
                         value: c.systemProxyEnabled,
                         onChanged: c.systemProxySupported
@@ -185,15 +188,17 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
-                  const _Section('進階'),
+                  const _Section('Advanced'),
                   _Group(
                     children: [
                       if (c.core.usesLocalProxy) ...[
                         ListTile(
                           leading: const Icon(Icons.settings_ethernet_rounded),
-                          title: const Text('本機埠'),
+                          title: const Text('Local port'),
                           subtitle: Text(
-                            locked ? '請先中斷連線再修改' : '預設 $defaultPort',
+                            locked
+                                ? 'Disconnect first to change it'
+                                : 'Default $defaultPort',
                           ),
                           trailing: Text('${c.port}', style: mono),
                           enabled: !locked,
@@ -201,14 +206,14 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         ListTile(
                           leading: const Icon(Icons.lan_outlined),
-                          title: const Text('本機代理'),
-                          subtitle: const Text('SOCKS5，手動設定用'),
+                          title: const Text('Local proxy'),
+                          subtitle: const Text('SOCKS5, for manual setup'),
                           trailing: SelectableText(c.listen, style: mono),
                         ),
                       ],
                       ListTile(
                         leading: const Icon(Icons.receipt_long_outlined),
-                        title: const Text('連線紀錄'),
+                        title: const Text('Connection log'),
                         trailing: const Icon(Icons.chevron_right_rounded),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -218,20 +223,20 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
-                  const _Section('關於'),
+                  const _Section('About'),
                   _Group(
                     children: [
                       ListTile(
                         leading: const Icon(Icons.memory_rounded),
-                        title: const Text('核心版本'),
+                        title: const Text('Core version'),
                         trailing: Text(
-                          c.coreVersion?.version ?? '未載入',
+                          c.coreVersion?.version ?? 'Not loaded',
                           style: mono,
                         ),
                       ),
                       ListTile(
                         leading: const Icon(Icons.verified_outlined),
-                        title: const Text('協議'),
+                        title: const Text('Protocol'),
                         trailing: Text(
                           c.coreVersion?.protocol.isNotEmpty == true
                               ? c.coreVersion!.protocol
@@ -254,8 +259,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final loc = locationFor(p.displayName);
     final cs = Theme.of(context).colorScheme;
     final expiry = p.expiresAt == null
-        ? '不限期'
-        : (p.isExpired ? '已到期' : '到期 ${formatDate(p.expiresAt!)}');
+        ? 'No expiry'
+        : (p.isExpired ? 'Expired' : 'Expires ${formatDate(p.expiresAt!)}');
     final host = p.server.contains(':')
         ? p.server.substring(0, p.server.lastIndexOf(':'))
         : p.server;
@@ -267,7 +272,7 @@ class _SettingsPageState extends State<SettingsPage> {
         style: TextStyle(color: p.isExpired ? cs.error : null),
       ),
       trailing: IconButton(
-        tooltip: '刪除',
+        tooltip: 'Delete',
         icon: const Icon(Icons.delete_outline_rounded),
         onPressed: () => _delete(p),
       ),
@@ -356,7 +361,7 @@ class _AddServerDialogState extends State<_AddServerDialog> {
     final text = data?.text?.trim() ?? '';
     if (!mounted) return;
     if (text.isEmpty) {
-      setState(() => _error = '剪貼簿沒有文字');
+      setState(() => _error = 'There is no text on the clipboard');
       return;
     }
     _ctrl.text = text;
@@ -366,14 +371,16 @@ class _AddServerDialogState extends State<_AddServerDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('新增伺服器'),
+      title: const Text('Add server'),
       content: SizedBox(
         width: 400,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('貼上你收到的伺服器連結（以 singlink:// 開頭）。'),
+            const Text(
+              'Paste the server link you received (it starts with singlink://).',
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _ctrl,
@@ -394,7 +401,7 @@ class _AddServerDialogState extends State<_AddServerDialog> {
               child: TextButton.icon(
                 onPressed: _working ? null : _fromClipboard,
                 icon: const Icon(Icons.content_paste_rounded),
-                label: const Text('從剪貼簿匯入'),
+                label: const Text('Import from clipboard'),
               ),
             ),
           ],
@@ -403,7 +410,7 @@ class _AddServerDialogState extends State<_AddServerDialog> {
       actions: [
         TextButton(
           onPressed: _working ? null : () => Navigator.pop(context, false),
-          child: const Text('取消'),
+          child: const Text('Cancel'),
         ),
         FilledButton(
           onPressed: _working ? null : () => _submit(_ctrl.text),
@@ -413,7 +420,7 @@ class _AddServerDialogState extends State<_AddServerDialog> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('新增'),
+              : const Text('Add'),
         ),
       ],
     );
@@ -428,13 +435,13 @@ class _LogPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('連線紀錄')),
+      appBar: AppBar(title: const Text('Connection log')),
       body: ListenableBuilder(
         listenable: c,
         builder: (context, _) {
           final items = c.logs.reversed.toList();
           if (items.isEmpty) {
-            return const Center(child: Text('尚無紀錄'));
+            return const Center(child: Text('No entries yet'));
           }
           return ListView.separated(
             padding: const EdgeInsets.all(16),

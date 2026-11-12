@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 /// flutter_test renders every glyph as a box. For goldens the owner can read,
-/// load real fonts: Roboto + Material Icons from the Flutter SDK cache, a CJK
-/// font and the colour emoji font from macOS, under the family names the
+/// load real fonts: Roboto + Material Icons from the Flutter SDK cache and the
+/// colour emoji font from macOS, under the family names the
 /// theme uses (see `fontFallback` in lib/ui/theme.dart). Missing files are
 /// skipped silently (the golden then just shows boxes).
 Future<void> loadGoldenFonts() async {
@@ -35,21 +35,11 @@ Future<void> loadGoldenFonts() async {
     ]);
     await load('MaterialIcons', ['$material/MaterialIcons-Regular.otf']);
   }
-  await load('PingFang HK', [
-    _firstExisting([
-      '/System/Library/Fonts/STHeiti Medium.ttc',
-      '/System/Library/Fonts/Hiragino Sans GB.ttc',
-      '/Library/Fonts/Arial Unicode.ttf',
-    ]),
-  ]);
   await load('Apple Color Emoji', [
     '/System/Library/Fonts/Apple Color Emoji.ttc',
   ]);
   await load('Menlo', ['/System/Library/Fonts/Menlo.ttc']);
 }
-
-String _firstExisting(List<String> paths) =>
-    paths.firstWhere((p) => File(p).existsSync(), orElse: () => paths.first);
 
 String? _flutterRoot() {
   final env = Platform.environment['FLUTTER_ROOT'];

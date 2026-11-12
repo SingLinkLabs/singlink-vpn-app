@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "SingLinkLabs" "\0"
-            VALUE "FileDescription", "星連VPN" "\0"
+            VALUE "FileDescription", "SingLinkVPN" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "SingLinkVPN" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 SingLinkLabs. All rights reserved." "\0"
             VALUE "OriginalFilename", "SingLinkVPN.exe" "\0"
-            VALUE "ProductName", "星連VPN" "\0"
+            VALUE "ProductName", "SingLinkVPN" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

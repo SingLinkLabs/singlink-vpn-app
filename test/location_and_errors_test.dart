@@ -11,37 +11,38 @@ void main() {
     }
 
     test('common names', () {
-      expectLoc('香港 01', '🇭🇰', '香港');
-      expectLoc('Hong Kong 2', '🇭🇰', '香港');
-      expectLoc('HK01', '🇭🇰', '香港');
-      expectLoc('日本 03', '🇯🇵', '日本');
-      expectLoc('東京', '🇯🇵', '東京');
-      expectLoc('Tokyo-2', '🇯🇵', '東京');
-      expectLoc('新加坡', '🇸🇬', '新加坡');
-      expectLoc('Singapore 1', '🇸🇬', '新加坡');
-      expectLoc('台灣 家寬', '🇹🇼', '台灣');
-      expectLoc('台北 1', '🇹🇼', '台北');
-      expectLoc('美國 洛杉磯', '🇺🇸', '洛杉磯');
-      expectLoc('US 1', '🇺🇸', '美國');
-      expectLoc('Los Angeles', '🇺🇸', '洛杉磯');
-      expectLoc('英國', '🇬🇧', '英國');
-      expectLoc('London 01', '🇬🇧', '倫敦');
-      expectLoc('德國 法蘭克福', '🇩🇪', '法蘭克福');
-      expectLoc('Germany', '🇩🇪', '德國');
-      expectLoc('韓國', '🇰🇷', '韓國');
-      expectLoc('首爾 02', '🇰🇷', '首爾');
-      expectLoc('Seoul', '🇰🇷', '首爾');
+      expectLoc('香港 01', '🇭🇰', 'Hong Kong');
+      expectLoc('Hong Kong 2', '🇭🇰', 'Hong Kong');
+      expectLoc('HK01', '🇭🇰', 'Hong Kong');
+      expectLoc('日本 03', '🇯🇵', 'Japan');
+      expectLoc('東京', '🇯🇵', 'Tokyo');
+      expectLoc('日本 東京 02', '🇯🇵', 'Tokyo');
+      expectLoc('Tokyo-2', '🇯🇵', 'Tokyo');
+      expectLoc('新加坡', '🇸🇬', 'Singapore');
+      expectLoc('Singapore 1', '🇸🇬', 'Singapore');
+      expectLoc('台灣 家寬', '🇹🇼', 'Taiwan');
+      expectLoc('台北 1', '🇹🇼', 'Taipei');
+      expectLoc('美國 洛杉磯', '🇺🇸', 'Los Angeles');
+      expectLoc('US 1', '🇺🇸', 'United States');
+      expectLoc('Los Angeles', '🇺🇸', 'Los Angeles');
+      expectLoc('英國', '🇬🇧', 'United Kingdom');
+      expectLoc('London 01', '🇬🇧', 'London');
+      expectLoc('德國 法蘭克福', '🇩🇪', 'Frankfurt');
+      expectLoc('Germany', '🇩🇪', 'Germany');
+      expectLoc('韓國', '🇰🇷', 'South Korea');
+      expectLoc('首爾 02', '🇰🇷', 'Seoul');
+      expectLoc('Seoul', '🇰🇷', 'Seoul');
     });
 
     test('unknown falls back to globe and raw name', () {
-      final l = locationFor('SingLink 本機示範節點');
+      final l = locationFor('SingLink local demo node');
       expect(l.flag, '🌐');
-      expect(l.city, 'SingLink 本機示範節點');
+      expect(l.city, 'SingLink local demo node');
       expect(l.known, isFalse);
       // Short codes only match whole words.
       expect(locationFor('demo node').known, isFalse);
       expect(locationFor('Atlanta').known, isFalse);
-      expect(locationFor('  ').city, '未命名伺服器');
+      expect(locationFor('  ').city, 'Unnamed server');
     });
 
     test('flagEmoji', () {
@@ -51,7 +52,7 @@ void main() {
   });
 
   group('friendly errors', () {
-    test('core error strings map to Chinese messages', () {
+    test('core error strings map to friendly messages', () {
       expect(friendlyError('singlink: token expired').message, msgExpired);
       expect(friendlyError('singlink: token revoked').message, msgRevoked);
       expect(
@@ -105,7 +106,7 @@ void main() {
       expect(friendlyLinkError('bad signature').message, msgBadLink);
       expect(
         systemProxyFailedMessage(1080),
-        '無法設定系統代理，請在系統設定手動設定 SOCKS 127.0.0.1:1080',
+        "Couldn't set the system proxy. Set SOCKS 127.0.0.1:1080 manually in System Settings.",
       );
     });
   });

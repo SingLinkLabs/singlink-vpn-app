@@ -151,7 +151,7 @@ void main() {
     expect((await core.status()).running, isTrue);
   });
 
-  test('start: declined consent gives the Chinese message, no TUN', () async {
+  test('start: declined consent gives the friendly message, no TUN', () async {
     consent = false;
     final r = await core.start(link: 'singlink://x', listen: '');
     expect(r.ok, isFalse);
@@ -251,14 +251,14 @@ void main() {
     expect(native, isEmpty);
   });
 
-  test('controller: revoke shows 「連線已中斷」', () async {
+  test('controller: revoke shows the dropped message', () async {
     final c = ClientController(core: core, store: MemoryStore());
     addTearDown(c.dispose);
     await c.init();
     await c.importLink('singlink://node#HK');
     await c.connect();
     expect(c.conn, ConnState.connected);
-    expect(c.logs.any((l) => l.message.contains('全裝置 VPN')), isTrue);
+    expect(c.logs.any((l) => l.message.contains('device-wide VPN')), isTrue);
 
     await messenger.handlePlatformMessage(
       vpnChannel.name,

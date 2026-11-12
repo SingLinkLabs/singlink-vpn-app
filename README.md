@@ -1,10 +1,10 @@
-# 星連VPN — first-generation prototype client (`singlink_vpn`)
+# SingLinkVPN — first-generation prototype client (`singlink_vpn`)
 
-**星連VPN 初代原型 / the first-generation prototype of SingLinkVPN.** A
+**The first-generation prototype of SingLinkVPN.** A
 consumer-VPN-style Flutter app for Windows, macOS, Android and iOS, built on
 the open [SingLink Protocol](https://github.com/SingLinkLabs/singlink-protocol)
 core. Published as a reference client and prototype; it is not the shipping
-星連VPN product.
+SingLinkVPN product.
 
 | Platform | Mode | Status |
 |---|---|---|
@@ -16,9 +16,9 @@ core. Published as a reference client and prototype; it is not the shipping
 - `core/`: the app's Go module (SingLink Protocol + the gVisor user-space
   TCP/IP stack for TUN mode) built into `libsinglink` for every platform
   (`make -C core macos|android|ios|windows`).
-- Bundle id `com.singlinklabs.singlinkvpn`, display name 「星連VPN」, UI in
-  Traditional Chinese.
-- Plugin-free (only `ffi` + `flutter_localizations`), so it builds without
+- Bundle id `com.singlinklabs.singlinkvpn`, display name "SingLinkVPN", UI in
+  English only.
+- Plugin-free (only `ffi`), so it builds without
   CocoaPods or Swift Package Manager.
 - License: Apache-2.0 (see `LICENSE`, `NOTICE`). "星連", "SingLink" and
   "SingLinkVPN" are trademarks of SingLinkLabs: forks must use their own name
@@ -30,20 +30,26 @@ Screenshots: `test/goldens/` (desktop), `docs/screenshots/android/`,
 ## What the user sees
 
 - **Main screen** (single ~420×760 window, light/dark): big power button
-  (未連線 → 連線中… pulsing → 已連線 glowing emerald/teal), status 「未受保護 /
-  正在連線 / 已受保護」, connection timer `HH:MM:SS`, 「你的 IP：…」 from
+  (Connect → Connecting... pulsing → Disconnect glowing emerald/teal), status
+  "Not protected / Connecting / Protected", connection timer `HH:MM:SS`,
+  "Your IP: ..." from
   `SingLinkExitIP`, location card (flag + city derived from the server name,
   `lib/models/location.dart`), live download/upload speed and session usage
   (from `SingLinkStatus`, every second). No proxy jargon on this screen.
-- **選擇地區** sheet: 「快速連線（自動）」 (last-used server, else the first) and
+- **Choose location** sheet: "Quick connect (auto)" (last-used server, else the first) and
   every server. Latency is measured with `SingLinkProbe` for the connected
-  server only; others show 「—」 (the core can only probe through the active
+  server only; others show "—" (the core can only probe through the active
   tunnel). Picking another location while connected switches over.
-- **設定** (gear): 新增伺服器 (paste / clipboard), server list with delete,
-  「系統全局代理」 (default on), 進階 (local port, default 1080; read-only
-  「本機代理 127.0.0.1:1080」; 連線紀錄), 關於 (core version, protocol).
-- Errors from the core are shown as short Chinese messages
-  (`lib/core/error_messages.dart`), with the original text under 「顯示詳細資訊」.
+- **Settings** (gear): Add server (paste / clipboard), server list with delete,
+  "System-wide proxy" (default on), Advanced (local port, default 1080;
+  read-only "Local proxy 127.0.0.1:1080"; Connection log), About (core
+  version, protocol).
+- Errors from the core are shown as short English messages that say what to do
+  (`lib/core/error_messages.dart`), with the original text under "Show details".
+- Location names are always English. Chinese node names in server links are
+  still recognised (match keys in `lib/models/location.dart`); names it does
+  not know, and the raw node name under the city, are shown as the server sent
+  them.
 
 Screenshots (rendered by `test/golden_test.dart` with fake data):
 `test/goldens/main_connected_{light,dark}.png`,
@@ -55,7 +61,7 @@ Screenshots (rendered by `test/golden_test.dart` with fake data):
 On desktop this is **system proxy mode**, not a packet-level VPN (Android and
 iOS use a real device-wide VPN, see their sections):
 
-- When 「系統全局代理」 is on, after the core starts, the app sets the macOS
+- When "System-wide proxy" is on, after the core starts, the app sets the macOS
   SOCKS proxy of every enabled network service to `127.0.0.1:<port>` with
   `/usr/sbin/networksetup`, after saving each service's previous SOCKS settings.
   On disconnect, on quit (⌘Q or closing the window) and when the core stops by
@@ -64,7 +70,8 @@ iOS use a real device-wide VPN, see their sections):
   `~/Library/Application Support/com.singlinklabs.singlinkvpn/system-proxy-restore.json`;
   if the app is killed while connected, the next launch restores from it.
 - If `networksetup` fails, the app stays connected and shows
-  「無法設定系統代理，請在系統設定手動設定 SOCKS 127.0.0.1:1080」.
+  "Couldn't set the system proxy. Set SOCKS 127.0.0.1:1080 manually in System
+  Settings."
 - Limits: only TCP traffic of apps that honour the system SOCKS proxy goes
   through the tunnel (browsers and most apps do; many CLI tools, games, and
   anything using raw UDP do not). A service that already had an
@@ -93,7 +100,7 @@ open build/macos/Build/Products/Release/SingLinkVPN.app
 Build the core first (`make -C ../singlink-protocol lib` →
 `../singlink-protocol/build/libsinglink.dylib`); it is bundled automatically
 (see below). Without it the app still starts and shows the banner
-「找不到核心元件 libsinglink.dylib」 with the expected path.
+"Core library libsinglink.dylib not found" with the expected path.
 
 Release builds keep `ARCHS = arm64` (Flutter 3.35's `lipo -verify_arch` with
 two archs fails with the current lipo). Deployment target is macOS 13.0 (the
@@ -160,8 +167,8 @@ deleted; `flutter clean` (or delete the .app) to drop it.
   (xcodeproj gem, idempotent):
   `GEM_HOME=… ruby scripts/setup_ios_tunnel.rb`.
 - The simulator cannot run a packet tunnel: connecting there shows
-  「此裝置無法建立 VPN（模擬器不支援）…」. A denied VPN prompt shows
-  「需要允許新增 VPN 設定」.
+  "This device can't create a VPN (the simulator isn't supported)...". A
+  denied VPN prompt shows "SingLinkVPN needs permission to add a VPN..."
 
 ```bash
 make -C core ios        # core/build/apple/Singlink.xcframework
@@ -207,7 +214,7 @@ flutter test --update-goldens test/golden_test.dart   # after UI changes
 - `controller_test.dart` — connect/disconnect with system proxy, warnings, quick connect, switching
 - `widget_test.dart` — main screen (no jargon), location sheet, settings, missing-core banner
 - `golden_test.dart` — screenshots in `test/goldens/` (loads Roboto/Material
-  Icons from the Flutter cache and CJK/emoji fonts from macOS)
+  Icons from the Flutter cache and the emoji font from macOS)
 - `ffi_mock_test.dart` — compiles `test/fixtures/mock_libsinglink.c` with `cc`
   and drives every binding (incl. `SingLinkExitIP`) through the real isolate + FFI path
 - `real_core_test.dart` — end-to-end against the real core and a demo node;
@@ -224,12 +231,12 @@ kill %1
 ## Layout
 
 ```
-lib/main.dart                        app, theme, zh-Hant-HK locale, quit hook
+lib/main.dart                        app, theme, English (en-US) locale, quit hook
 lib/core/singlink_bindings.dart      raw FFI bindings, library search
 lib/core/singlink_service.dart       VpnCore interface + Isolate.run implementation
 lib/core/client_controller.dart      state: connect/disconnect, poll, exit IP, latency
 lib/core/system_proxy.dart           networksetup system proxy (ProcessRunner, journal)
-lib/core/error_messages.dart         core error -> Chinese message
+lib/core/error_messages.dart         core error -> plain English message
 lib/core/app_store.dart              JSON persistence
 lib/models/                          Profile, core replies, location mapping
 lib/ui/home_page.dart                main screen
@@ -254,7 +261,7 @@ WinINet proxy at it.
   only) → `build\windows\x64\runner\Release\SingLinkVPN.exe`. The CMake
   install step copies `core/build/windows/singlink.dll` next to the .exe if it
   exists (`SINGLINK_REQUIRE_CORE=1` makes a missing core an error). Window:
-  「星連VPN」, 420×760, minimum 380×620.
+  "SingLinkVPN", 420×760, minimum 380×620.
 - **System proxy** (`lib/platform/windows.dart`), in
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`:
   `ProxyEnable=1`, `ProxyServer=127.0.0.1:<port>` (HTTP proxy),
@@ -294,8 +301,9 @@ the `PROTOCOL_REPO_TOKEN` secret is needed only while that repo is private.
   fdfe:dcba:9876::1/126, default routes, DNS 172.19.0.2, the app itself
   excluded so the core's own sockets bypass the VPN), and hands the detached
   fd to the core with `SingLinkTunStart`.
-- Foreground service with the notification 「星連VPN 已連線」; a revoke by the
-  system or another VPN stops the core and the app shows 「連線已中斷」.
+- Foreground service with the notification "SingLinkVPN is connected"; a revoke
+  by the system or another VPN stops the core and the app shows "The
+  connection dropped. Connect again."
 - Build: `make -C core android` (NDK; the Gradle build runs it if the `.so`
   files are missing), then `flutter build apk --release`. Libraries are
   16 KB-page aligned for Android 15+ devices. Release builds are signed with

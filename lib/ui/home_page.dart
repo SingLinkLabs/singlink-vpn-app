@@ -116,7 +116,7 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Text(
-            '星連VPN',
+            'SingLinkVPN',
             style: text.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
               letterSpacing: 0.5,
@@ -124,7 +124,7 @@ class _Header extends StatelessWidget {
           ),
           const Spacer(),
           IconButton(
-            tooltip: '設定',
+            tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),
             onPressed: onSettings,
           ),
@@ -147,26 +147,26 @@ class _Body extends StatelessWidget {
 
     final (headline, sub, color, icon) = switch (c.conn) {
       ConnState.connected => (
-        '已受保護',
-        '你的網絡流量已加密',
+        'Protected',
+        'Your traffic is encrypted',
         pal.protected,
         Icons.verified_user_rounded,
       ),
       ConnState.connecting => (
-        '正在連線',
-        '正在建立加密連線…',
+        'Connecting',
+        'Setting up a secure connection...',
         pal.connecting,
         Icons.shield_outlined,
       ),
       ConnState.disconnecting => (
-        '正在中斷',
-        '正在還原網絡設定…',
+        'Disconnecting',
+        'Restoring your network settings...',
         pal.connecting,
         Icons.shield_outlined,
       ),
       ConnState.disconnected => (
-        '未受保護',
-        '連線後即可加密並保護你的網絡流量',
+        'Not protected',
+        'Connect to encrypt and protect your traffic',
         pal.unprotected,
         Icons.gpp_maybe_rounded,
       ),
@@ -235,7 +235,7 @@ class _Body extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '你的 IP：${_ip()}',
+            'Your IP: ${_ip()}',
             textAlign: TextAlign.center,
             style: text.bodyMedium?.copyWith(
               color: cs.onSurfaceVariant,
@@ -263,6 +263,6 @@ class _Body extends StatelessWidget {
   String _ip() {
     if (!c.isConnected) return '—';
     if (c.exitIp != null) return c.exitIp!;
-    return c.exitIpLoading ? '查詢中…' : '—';
+    return c.exitIpLoading ? 'Checking...' : '—';
   }
 }

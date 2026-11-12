@@ -11,7 +11,7 @@ import android.net.VpnService
 import android.os.Build
 
 /**
- * Foreground VpnService that owns the device-wide VPN session 「星連VPN」.
+ * Foreground VpnService that owns the device-wide VPN session "SingLinkVPN".
  *
  * It only builds the TUN interface; the descriptor is detached and handed to
  * the Go core (SingLinkTunStart, called from Dart), which relays every packet
@@ -23,7 +23,7 @@ class SingLinkVpnService : VpnService() {
         const val ACTION_CONNECT = "com.singlinklabs.singlinkvpn.CONNECT"
         private const val NOTIFICATION_ID = 1
         private const val NOTIFICATION_CHANNEL = "vpn_status"
-        private const val SESSION = "星連VPN"
+        private const val SESSION = "SingLinkVPN"
 
         // Private addresses for the TUN interface. The core answers DNS on
         // any UDP/53 address, so DNS_SERVER only has to be inside the tunnel.
@@ -108,10 +108,10 @@ class SingLinkVpnService : VpnService() {
             nm.createNotificationChannel(
                 NotificationChannel(
                     NOTIFICATION_CHANNEL,
-                    "VPN 連線狀態",
+                    "VPN status",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "星連VPN 連線時顯示"
+                    description = "Shown while SingLinkVPN is connected"
                     setShowBadge(false)
                 },
             )
@@ -124,8 +124,8 @@ class SingLinkVpnService : VpnService() {
         }
         val notification = builder
             .setSmallIcon(R.drawable.ic_stat_vpn)
-            .setContentTitle("星連VPN 已連線")
-            .setContentText("所有流量正經由星連VPN 傳送")
+            .setContentTitle("SingLinkVPN is connected")
+            .setContentText("All traffic is going through SingLinkVPN")
             .setContentIntent(openAppIntent())
             .setOngoing(true)
             .setShowWhen(false)

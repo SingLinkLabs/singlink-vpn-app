@@ -37,10 +37,9 @@ class StatusPalette {
   );
 }
 
-/// Used for CJK text and flag emoji when the primary font lacks the glyphs.
-/// On macOS these name the system fonts; tests load stand-ins under the same
-/// names.
-const fontFallback = ['PingFang HK', 'Apple Color Emoji'];
+/// Used for flag emoji when the primary font lacks the glyphs. On macOS this
+/// names the system font; tests load it under the same name.
+const fontFallback = ['Apple Color Emoji'];
 
 ThemeData buildTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;

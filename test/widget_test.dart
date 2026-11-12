@@ -36,16 +36,16 @@ void main() {
     await tester.pumpWidget(SingLinkVpnApp(controller: c));
     await tester.pump(const Duration(milliseconds: 600));
 
-    expect(find.text('星連VPN'), findsOneWidget);
-    expect(find.text('未受保護'), findsOneWidget);
-    expect(find.text('連線'), findsOneWidget);
-    expect(find.text('你的 IP：—'), findsOneWidget);
-    expect(find.text('香港'), findsOneWidget);
+    expect(find.text('SingLinkVPN'), findsOneWidget);
+    expect(find.text('Not protected'), findsOneWidget);
+    expect(find.text('Connect'), findsOneWidget);
+    expect(find.text('Your IP: —'), findsOneWidget);
+    expect(find.text('Hong Kong'), findsOneWidget);
     expect(find.text('🇭🇰'), findsOneWidget);
-    expect(find.text('快速連線'), findsOneWidget);
-    expect(find.text('下載'), findsOneWidget);
-    expect(find.text('上傳'), findsOneWidget);
-    expect(find.byTooltip('設定'), findsOneWidget);
+    expect(find.text('Quick connect'), findsOneWidget);
+    expect(find.text('Download'), findsOneWidget);
+    expect(find.text('Upload'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
 
     for (final jargon in [
       'SOCKS',
@@ -72,11 +72,11 @@ void main() {
       links: ['singlink://a#香港 01', 'singlink://b#Tokyo 2'],
     );
     await tester.pumpWidget(SingLinkVpnApp(controller: c));
-    await tester.tap(find.text('香港'));
+    await tester.tap(find.text('Hong Kong'));
     await tester.pumpAndSettle();
-    expect(find.text('選擇地區'), findsOneWidget);
-    expect(find.text('快速連線（自動）'), findsOneWidget);
-    expect(find.text('東京'), findsOneWidget);
+    expect(find.text('Choose location'), findsOneWidget);
+    expect(find.text('Quick connect (auto)'), findsOneWidget);
+    expect(find.text('Tokyo'), findsOneWidget);
     expect(
       find.descendant(of: find.byType(BottomSheet), matching: find.text('—')),
       findsNWidgets(2),
@@ -92,11 +92,11 @@ void main() {
     addTearDown(tester.view.reset);
     final c = await _controller(tester, FakeCore());
     await tester.pumpWidget(SingLinkVpnApp(controller: c));
-    await tester.tap(find.byTooltip('設定'));
+    await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
-    expect(find.text('新增伺服器'), findsOneWidget);
-    expect(find.text('系統全局代理'), findsOneWidget);
-    expect(find.text('本機代理'), findsOneWidget);
+    expect(find.text('Add server'), findsOneWidget);
+    expect(find.text('System-wide proxy'), findsOneWidget);
+    expect(find.text('Local proxy'), findsOneWidget);
     expect(find.text('127.0.0.1:1080'), findsOneWidget);
     expect(find.text('1.0.0-draft'), findsOneWidget);
     expect(find.text('SingLink/1'), findsOneWidget);
@@ -121,13 +121,16 @@ void main() {
     await tester.pumpWidget(SingLinkVpnApp(controller: c));
     await tester.pump(const Duration(milliseconds: 600));
 
-    expect(find.text('找不到核心元件 libsinglink.dylib'), findsOneWidget);
+    expect(
+      find.text('Core library libsinglink.dylib not found'),
+      findsOneWidget,
+    );
     expect(
       find.textContaining('Contents/Frameworks/libsinglink.dylib'),
       findsOneWidget,
     );
-    expect(find.text('未受保護'), findsOneWidget);
-    expect(find.text('尚未新增伺服器'), findsOneWidget);
+    expect(find.text('Not protected'), findsOneWidget);
+    expect(find.text('No servers yet'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

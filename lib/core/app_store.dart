@@ -15,8 +15,8 @@ const localHost = '127.0.0.1';
 /// Returns an error message, or null if [s] is a usable local port.
 String? validatePort(String s) {
   final port = int.tryParse(s.trim());
-  if (port == null) return '請輸入數字';
-  if (port < 1 || port > 65535) return '埠號須介於 1–65535';
+  if (port == null) return 'Enter a number';
+  if (port < 1 || port > 65535) return 'The port must be between 1 and 65535';
   return null;
 }
 
@@ -32,10 +32,10 @@ class AppState {
 
   final List<Profile> profiles;
 
-  /// Server picked in 「選擇地區」 (ignored while [autoSelect] is on).
+  /// Server picked in "Choose location" (ignored while [autoSelect] is on).
   String? selectedId;
 
-  /// 「快速連線（自動）」: use the last-used server, else the first one.
+  /// "Quick connect (auto)": use the last-used server, else the first one.
   bool autoSelect;
 
   /// Server of the last successful connection.
@@ -44,7 +44,7 @@ class AppState {
   /// Local SOCKS port the core listens on (always on 127.0.0.1).
   int port;
 
-  /// 「系統全局代理」: set the macOS system SOCKS proxy while connected.
+  /// "System-wide proxy": set the macOS system SOCKS proxy while connected.
   bool systemProxy;
 
   String get listen => '$localHost:$port';

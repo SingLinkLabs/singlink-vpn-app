@@ -30,7 +30,7 @@ import '../models/profile.dart';
 const vpnChannel = MethodChannel('com.singlinklabs.singlinkvpn/vpn');
 
 /// Error returned by [AndroidVpnCore.start] when the user declines the
-/// system VPN dialog (shown as 「需要允許建立 VPN 連線」).
+/// system VPN dialog (shown as msgVpnPermission in error_messages.dart).
 const vpnPermissionDenied = 'vpn permission denied';
 
 VpnCore createAndroidCore() {
@@ -132,7 +132,7 @@ class AndroidVpnCore implements VpnCore {
   Future<dynamic> _onNativeCall(MethodCall call) async {
     if (call.method == 'revoked') {
       // The system already tore the VPN down; stop relaying. The next status
-      // poll then reports running:false and the UI shows 「連線已中斷」.
+      // poll then reports running:false and the UI shows msgDropped.
       _active = false;
       try {
         await calls.tunStop();

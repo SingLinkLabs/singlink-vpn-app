@@ -47,14 +47,14 @@ class LocationCard extends StatelessWidget {
     final loc = p == null ? null : locationFor(p.displayName);
 
     final caption = switch (c.conn) {
-      ConnState.connected => '已連線地區',
-      ConnState.connecting => '正在連線至',
-      _ => c.autoSelect ? '快速連線' : '選擇的地區',
+      ConnState.connected => 'Connected to',
+      ConnState.connecting => 'Connecting to',
+      _ => c.autoSelect ? 'Quick connect' : 'Selected location',
     };
 
-    final title = loc?.city ?? '尚未新增伺服器';
+    final title = loc?.city ?? 'No servers yet';
     final subtitle = p == null
-        ? '點此新增伺服器'
+        ? 'Add a server to get started'
         : (loc!.known && loc.city != p.displayName ? p.displayName : null);
 
     return Card(
@@ -100,7 +100,7 @@ class LocationCard extends StatelessWidget {
                 ),
               ),
               if (c.autoSelect && p != null) ...[
-                const _Chip(label: '自動', icon: Icons.bolt_rounded),
+                const _Chip(label: 'Auto', icon: Icons.bolt_rounded),
                 const SizedBox(width: 4),
               ],
               Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
@@ -144,7 +144,7 @@ class _Chip extends StatelessWidget {
   }
 }
 
-/// 「選擇地區」 bottom sheet.
+/// "Choose location" bottom sheet.
 Future<void> showLocationSheet(
   BuildContext context,
   ClientController c, {
@@ -205,7 +205,7 @@ class _LocationList extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
           child: Text(
-            '選擇地區',
+            'Choose location',
             style: text.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
         ),
@@ -220,10 +220,10 @@ class _LocationList extends StatelessWidget {
             ),
             child: Icon(Icons.bolt_rounded, color: cs.primary),
           ),
-          title: '快速連線（自動）',
+          title: 'Quick connect (auto)',
           subtitle: autoLoc == null
-              ? '自動使用上次連線的地區'
-              : '上次使用：${autoLoc.flag} ${autoLoc.city}',
+              ? 'Uses your last location'
+              : 'Last used: ${autoLoc.flag} ${autoLoc.city}',
           trailing: null,
           onTap: c.profiles.isEmpty
               ? null
@@ -235,7 +235,7 @@ class _LocationList extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 18, 8, 6),
           child: Text(
-            '所有地區',
+            'All locations',
             style: text.labelLarge?.copyWith(color: cs.onSurfaceVariant),
           ),
         ),
@@ -243,7 +243,7 @@ class _LocationList extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
             child: Text(
-              '尚未新增伺服器。請到「設定 → 新增伺服器」貼上連結。',
+              'No servers yet. Go to Settings → Add server and paste your link.',
               style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
@@ -254,7 +254,7 @@ class _LocationList extends StatelessWidget {
           child: TextButton.icon(
             onPressed: onManageServers,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('新增或管理伺服器'),
+            label: const Text('Add or manage servers'),
           ),
         ),
       ],
@@ -268,14 +268,14 @@ class _LocationList extends StatelessWidget {
     if (connected && c.latencyMs != null) {
       latency = '${c.latencyMs} ms';
     } else if (connected && c.measuring) {
-      latency = '測速中';
+      latency = 'Testing';
     } else {
       latency = '—';
     }
     final sub = <String>[
       if (loc.known && loc.city != p.displayName) p.displayName,
-      if (connected) '已連線',
-      if (p.isExpired) '已到期',
+      if (connected) 'Connected',
+      if (p.isExpired) 'Expired',
     ].join(' · ');
 
     return _Tile(

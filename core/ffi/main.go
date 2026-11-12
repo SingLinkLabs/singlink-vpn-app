@@ -1,4 +1,4 @@
-// Command ffi builds libsinglink for the 星連VPN apps: the protocol's C ABI
+// Command ffi builds libsinglink for the SingLinkVPN apps: the protocol's C ABI
 // (SingLinkStart, SingLinkStatus, ...) plus the device-wide VPN entry points
 // used on Android and iOS/macOS (SingLinkTunStart, SingLinkTunStop).
 //

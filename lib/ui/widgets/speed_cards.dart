@@ -20,7 +20,7 @@ class SpeedCards extends StatelessWidget {
           children: [
             Expanded(
               child: _SpeedCard(
-                label: '下載',
+                label: 'Download',
                 icon: Icons.arrow_downward_rounded,
                 color: Brand.primary,
                 rate: live ? c.downRate : null,
@@ -29,7 +29,7 @@ class SpeedCards extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _SpeedCard(
-                label: '上傳',
+                label: 'Upload',
                 icon: Icons.arrow_upward_rounded,
                 color: Brand.accent,
                 rate: live ? c.upRate : null,
@@ -39,7 +39,7 @@ class SpeedCards extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          live ? '本次用量 ${formatBytes(c.totalBytes)}' : '本次用量 —',
+          live ? 'Data used ${formatBytes(c.totalBytes)}' : 'Data used —',
           style: text.bodySmall?.copyWith(
             color: cs.onSurfaceVariant,
             fontFeatures: const [FontFeature.tabularFigures()],

@@ -29,9 +29,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Win32Window scales by the monitor's DPI).
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(420, 760);
-  // Window title: the app name in Traditional Chinese, escaped so this file
-  // stays ASCII (MSVC /WX fails on non-ASCII source under CJK code pages).
-  if (!window.Create(L"\u661F\u9023VPN", origin, size)) {
+  // Window title: the app name. Keep this file ASCII (MSVC /WX fails on
+  // non-ASCII source under CJK code pages).
+  if (!window.Create(L"SingLinkVPN", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
