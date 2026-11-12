@@ -26,7 +26,7 @@ class FakeTunCalls implements TunCalls {
 
   @override
   Future<String> version() async =>
-      '{"version":"1.0.0-test","protocol":"SingLink/1"}';
+      '{"version":"1.0.0-test","protocol":"SingLink Beta"}';
 
   @override
   Future<String> parseLink(String link) async {

@@ -41,7 +41,7 @@ void main() {
     expect(s.available, isTrue);
     final v = await s.version();
     expect(v.version, '1.0.0-mock');
-    expect(v.protocol, 'SingLink/1');
+    expect(v.protocol, 'SingLink Beta');
 
     final bad = await s.parseLink('sl3://x');
     expect(bad.ok, isFalse);

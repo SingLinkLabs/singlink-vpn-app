@@ -105,7 +105,7 @@ void main() {
     expect(find.text('Local proxy'), findsOneWidget);
     expect(find.text('127.0.0.1:1080'), findsOneWidget);
     expect(find.text('1.0.0-draft'), findsOneWidget);
-    expect(find.text('SingLink/1'), findsOneWidget);
+    expect(find.text('SingLink Beta'), findsOneWidget);
   });
 
   testWidgets('app starts without the core and shows the banner', (
