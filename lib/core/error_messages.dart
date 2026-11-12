@@ -29,10 +29,15 @@ const msgCoreMissing = '找不到星連VPN 核心元件，請重新安裝 App';
 const msgBadLink = '無法辨識此伺服器連結，請確認已完整複製';
 const msgDropped = '連線已中斷，請重新連線';
 const msgGeneric = '連線失敗，請稍後再試或換一個地區';
+const msgVpnPermission = '需要允許新增 VPN 設定';
+const msgVpnUnsupported = '此裝置無法建立 VPN（模擬器不支援），請在 iPhone 上使用';
 
 // Order matters: the core may wrap one error in another
 // ("cannot reach node: ... token expired"), so the most specific wins.
 const _table = <(String, String)>[
+  // Device-wide VPN (iOS Network Extension): fixed prefixes from the app.
+  ('vpn permission denied', msgVpnPermission),
+  ('vpn unsupported', msgVpnUnsupported),
   ('token expired', msgExpired),
   ('token revoked', msgRevoked),
   ('token not yet valid', msgNotYetValid),
