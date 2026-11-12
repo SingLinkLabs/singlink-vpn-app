@@ -12,14 +12,25 @@
 #                           the matching entitlements. Default: release.
 #
 # Environment:
-#   SINGLINK_CORE_LIB        source dylib (default: <app>/../singlink-protocol/build/libsinglink.dylib)
+#   SINGLINK_CORE_LIB        source dylib (default: the app's own core
+#                            <app>/core/build/macos/libsinglink.dylib from
+#                            `make -C core macos`, same ABI plus TUN; falls back to
+#                            <app>/../singlink-protocol/build/libsinglink.dylib)
 #   SINGLINK_REQUIRE_CORE=1  fail instead of warning when the dylib is missing
 #   CODESIGN_IDENTITY   standalone mode only (default "-" = ad-hoc)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LIB_SRC="${SINGLINK_CORE_LIB:-$APP_DIR/../singlink-protocol/build/libsinglink.dylib}"
+APP_CORE_LIB="$APP_DIR/core/build/macos/libsinglink.dylib"
+PROTOCOL_CORE_LIB="$APP_DIR/../singlink-protocol/build/libsinglink.dylib"
+if [[ -n "${SINGLINK_CORE_LIB:-}" ]]; then
+  LIB_SRC="$SINGLINK_CORE_LIB"
+elif [[ -f "$APP_CORE_LIB" ]]; then
+  LIB_SRC="$APP_CORE_LIB"
+else
+  LIB_SRC="$PROTOCOL_CORE_LIB"
+fi
 LIB_NAME="libsinglink.dylib"
 
 warn() { echo "warning: [singlink] $*" >&2; }
