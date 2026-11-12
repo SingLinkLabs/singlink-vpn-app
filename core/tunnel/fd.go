@@ -3,34 +3,40 @@
 package tunnel
 
 import (
-	"errors"
+	"os"
+	"sync"
 	"syscall"
 )
 
 // fdDevice wraps a TUN file descriptor handed over by the OS VPN API
 // (Android VpnService, Apple's utun under NEPacketTunnelProvider).
 // On Apple platforms every packet carries a 4-byte address-family header.
+//
+// The descriptor is switched to non-blocking mode and read through Go's
+// poller (os.File): a plain blocking read(2) is not woken by close(2), so
+// once the OS takes the interface down (Android onRevoke) no packet ever
+// arrives, Tunnel.Close waits forever and the interface leaks.
 type fdDevice struct {
-	fd     int
-	afHdr  bool
-	wbuf   []byte
-	closed chan struct{}
+	f     *os.File
+	afHdr bool
+	wbuf  []byte
+	once  sync.Once
 }
 
 // NewFDDevice returns a Device for fd. Set appleHeader on macOS/iOS utun.
 func NewFDDevice(fd int, appleHeader bool) Device {
-	return &fdDevice{fd: fd, afHdr: appleHeader, closed: make(chan struct{})}
+	syscall.SetNonblock(fd, true)
+	return &fdDevice{f: os.NewFile(uintptr(fd), "tun"), afHdr: appleHeader}
 }
 
 func (d *fdDevice) Read(p []byte) (int, error) {
 	if !d.afHdr {
-		n, err := syscall.Read(d.fd, p)
-		return n, retryable(err)
+		return d.f.Read(p)
 	}
 	buf := make([]byte, len(p)+4)
-	n, err := syscall.Read(d.fd, buf)
+	n, err := d.f.Read(buf)
 	if err != nil {
-		return 0, retryable(err)
+		return 0, err
 	}
 	if n < 4 {
 		return 0, nil
@@ -40,7 +46,7 @@ func (d *fdDevice) Read(p []byte) (int, error) {
 
 func (d *fdDevice) Write(p []byte) (int, error) {
 	if !d.afHdr {
-		return syscall.Write(d.fd, p)
+		return d.f.Write(p)
 	}
 	if cap(d.wbuf) < len(p)+4 {
 		d.wbuf = make([]byte, len(p)+4)
@@ -52,24 +58,13 @@ func (d *fdDevice) Write(p []byte) (int, error) {
 	}
 	b[0], b[1], b[2], b[3] = 0, 0, 0, af
 	copy(b[4:], p)
-	n, err := syscall.Write(d.fd, b)
+	n, err := d.f.Write(b)
 	return max(n-4, 0), err
 }
 
+// Close closes the descriptor and wakes a pending Read.
 func (d *fdDevice) Close() error {
-	select {
-	case <-d.closed:
-		return nil
-	default:
-		close(d.closed)
-	}
-	return syscall.Close(d.fd)
-}
-
-// retryable maps EINTR/EAGAIN to a zero-length read the loop simply repeats.
-func retryable(err error) error {
-	if errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.EAGAIN) {
-		return nil
-	}
+	var err error
+	d.once.Do(func() { err = d.f.Close() })
 	return err
 }
