@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/client_controller.dart';
+import '../legal.dart';
 import 'format.dart';
 import 'settings_page.dart';
 import 'theme.dart';
@@ -258,6 +259,16 @@ class _Body extends StatelessWidget {
           LocationCard(c: c, onTap: onLocations),
           const SizedBox(height: 12),
           SpeedCards(c: c),
+          const SizedBox(height: 14),
+          // Required attribution (NOTICE, Apache License 2.0 section 4(d)).
+          Text(
+            kMadeBy,
+            textAlign: TextAlign.center,
+            style: text.labelSmall?.copyWith(
+              color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+              letterSpacing: 0.3,
+            ),
+          ),
         ],
       ),
     );

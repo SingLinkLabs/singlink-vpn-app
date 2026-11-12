@@ -11,6 +11,9 @@ const kAttribution =
 
 const kCopyright = '© 2026 SingLinkLabs · Apache-2.0';
 
+/// Shown at the bottom of the main screen. Required attribution: see NOTICE.
+const kMadeBy = 'Made by SingLinkVPN · Powered by the SingLink Protocol';
+
 const _notice =
     '''SingLinkVPN — first-generation prototype client
 Copyright 2026 SingLinkLabs
