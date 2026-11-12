@@ -44,7 +44,7 @@ void main() {
     () async {
       expect(core.usesLocalProxy, isFalse);
       expect(core.available, isTrue);
-      expect((await core.version()).protocol, 'SingLink/1');
+      expect((await core.version()).protocol, 'SingLink Beta');
       final p = await core.parseLink('singlink://a#Hong Kong 01');
       expect(p.ok, isTrue);
       expect(calls, isEmpty, reason: 'parsing never touches the tunnel');

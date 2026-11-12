@@ -26,7 +26,7 @@ void main() {
     () async {
       final s = SingLinkService.at(lib!);
       expect(s.available, isTrue, reason: s.location.errors.join('\n'));
-      expect((await s.version()).protocol, 'SingLink/1');
+      expect((await s.version()).protocol, 'SingLink Beta');
 
       final parsed = await s.parseLink(link!);
       expect(parsed.ok, isTrue, reason: parsed.error);

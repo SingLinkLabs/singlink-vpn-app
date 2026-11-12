@@ -153,9 +153,16 @@ void main() {
     expect(
       CoreVersion.fromJson({
         'version': '1.0.0-draft',
-        'protocol': 'SingLink/1',
+        'protocol': 'SingLink Beta',
       }).toString(),
-      '1.0.0-draft · SingLink/1',
+      '1.0.0-draft · SingLink Beta',
+    );
+    expect(
+      CoreVersion.fromJson({
+        'version': '1.0.0-draft',
+        'protocol': 'SingLink/1',
+      }).protocol,
+      'SingLink Beta',
     );
     final ip = ExitIpResult.fromJson({'ok': true, 'ip': '203.0.113.7'});
     expect([ip.ok, ip.ip], [true, '203.0.113.7']);
