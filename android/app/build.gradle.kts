@@ -5,6 +5,20 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// The Go core lives in ../../core (relative to this file).
+val singlinkCoreDir = rootProject.file("../core/build/android")
+val singlinkAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+
+// Builds the core when any ABI is missing (needs Go and the Android NDK; see
+// core/Makefile). Delete core/build/android to force a rebuild.
+val buildSinglinkCore by tasks.registering(Exec::class) {
+    description = "Builds libsinglink.so for every Android ABI"
+    workingDir = rootProject.file("../core")
+    commandLine("make", "android")
+    onlyIf { singlinkAbis.any { !File(singlinkCoreDir, "$it/libsinglink.so").exists() } }
+}
+tasks.named("preBuild") { dependsOn(buildSinglinkCore) }
+
 android {
     namespace = "com.singlinklabs.singlinkvpn"
     compileSdk = flutter.compileSdkVersion
@@ -20,14 +34,19 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.singlinklabs.singlinkvpn"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    // libsinglink.so (Go core with the TUN bridge) for every ABI, built by
+    // `make -C core android` into core/build/android/<abi>/.
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDir(singlinkCoreDir)
+        }
     }
 
     buildTypes {
