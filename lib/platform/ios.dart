@@ -141,4 +141,3 @@ class IosTunnelCore implements VpnCore {
 
 /// The app was built without the VPN service (no native handler).
 const vpnUnavailableError = 'vpn unsupported: VPN service not available';
-
