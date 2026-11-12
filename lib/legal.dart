@@ -15,7 +15,7 @@ const kCopyright = '© 2026 SingLinkLabs · Apache-2.0';
 const kMadeBy = 'Made by SingLinkVPN · Powered by the SingLink Protocol';
 
 const _notice =
-    '''SingLinkVPN — first-generation prototype client
+    '''SingLinkVPN — first-generation client
 Copyright 2026 SingLinkLabs
 Licensed under the Apache License, Version 2.0.
 

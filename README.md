@@ -1,10 +1,15 @@
-# SingLinkVPN — first-generation prototype client (`singlink_vpn`)
+# SingLinkVPN — first-generation client (`singlink_vpn`)
 
-**The first-generation prototype of SingLinkVPN.** A
+**The first-generation SingLinkVPN client.** A
 consumer-VPN-style Flutter app for Windows, macOS, Android and iOS, built on
 the open [SingLink Protocol](https://github.com/SingLinkLabs/singlink-protocol)
-core. Published as a reference client and prototype; it is not the shipping
-SingLinkVPN product.
+core.
+
+SingLinkLabs released its first-generation protocol and client code after a
+security audit. The latest versions (the SingLink 2.0 core and the current
+SingLinkVPN apps) are not yet fully public for security reasons, so only code
+that poses no security risk was released. The open-source plan continues, and
+more will be released in later phases after security review.
 
 | Platform | Mode | Status |
 |---|---|---|
