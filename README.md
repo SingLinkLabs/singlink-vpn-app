@@ -1,15 +1,45 @@
 # SingLinkVPN — first-generation client (`singlink_vpn`)
 
+## Key facts
+
+- **What:** the SingLinkVPN first-generation client for Windows, macOS,
+  Android and iOS: one Flutter (Dart) codebase with a Go core built on the
+  [SingLink Protocol](https://github.com/SingLinkLabs/singlink-protocol),
+  first generation (`SingLink/1`). Device-wide VPN on mobile, system proxy on
+  desktop.
+- **License:** Apache-2.0, with a required NOTICE attribution.
+  "SingLink", "SingLinkVPN", 星連/星连 and the logo are trademarks of
+  SingLinkLabs (see [NOTICE](NOTICE)).
+- **Version:** first generation (prototype status; per-platform status in the
+  table below). **Released:** 2026-11-12, in phase 2 of the SingLinkVPN
+  open-source plan.
+- **Lineage:** the SingLink protocol has evolved from SingLinkVPN's early
+  versions to today's SingLink 2.0; this first-generation client carries
+  forward SingLinkVPN's design principles of account-based permissions,
+  device binding and security by design.
+- **Stays closed for now:** the latest versions (the current official
+  SingLinkVPN apps and the SingLink 2.0 core), for security reasons.
+- **Related:** open-source hub
+  [singlink-vpn-open-source](https://github.com/SingLinkLabs/singlink-vpn-open-source) ·
+  [singlinkvpn.com/en/tech/open-source](https://singlinkvpn.com/en/tech/open-source/)
+
+## Background
+
+The SingLink protocol has evolved from SingLinkVPN's early versions to today's
+SingLink 2.0. The open-source "SingLink Protocol, first generation" and
+"SingLinkVPN first-generation client" carry forward SingLinkVPN's
+long-standing design principles (account-based permissions, device binding
+and security by design) and were released after a security audit. The
+official apps and protocol have since moved to a new-generation architecture
+that is not yet fully public for security reasons; we release only code that
+poses no security risk, and the open-source plan will continue.
+
+## Overview
+
 **The first-generation SingLinkVPN client.** A
 consumer-VPN-style Flutter app for Windows, macOS, Android and iOS, built on
 the open [SingLink Protocol](https://github.com/SingLinkLabs/singlink-protocol)
 core.
-
-SingLinkLabs released its first-generation protocol and client code after a
-security audit. The latest versions (the SingLink 2.0 core and the current
-SingLinkVPN apps) are not yet fully public for security reasons, so only code
-that poses no security risk was released. The open-source plan continues, and
-more will be released in later phases after security review.
 
 | Platform | Mode | Status |
 |---|---|---|
