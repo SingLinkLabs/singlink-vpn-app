@@ -1,7 +1,6 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/app_store.dart';
 import 'core/client_controller.dart';
@@ -21,12 +20,8 @@ Future<void> main() async {
   runApp(SingLinkVpnApp(controller: controller));
 }
 
-/// Traditional Chinese (Hong Kong) — also drives correct CJK glyph selection.
-const appLocale = Locale.fromSubtags(
-  languageCode: 'zh',
-  scriptCode: 'Hant',
-  countryCode: 'HK',
-);
+/// The UI is English only.
+const appLocale = Locale('en', 'US');
 
 class SingLinkVpnApp extends StatefulWidget {
   const SingLinkVpnApp({super.key, required this.controller, this.themeMode});
@@ -69,22 +64,13 @@ class _SingLinkVpnAppState extends State<SingLinkVpnApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '星連VPN',
+      title: 'SingLinkVPN',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
       themeMode: widget.themeMode ?? ThemeMode.system,
       locale: appLocale,
-      supportedLocales: const [
-        appLocale,
-        Locale.fromSubtags(
-          languageCode: 'zh',
-          scriptCode: 'Hant',
-          countryCode: 'TW',
-        ),
-        Locale('en'),
-      ],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [appLocale],
       home: HomePage(c: widget.controller),
     );
   }

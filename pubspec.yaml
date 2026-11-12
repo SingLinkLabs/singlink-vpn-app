@@ -1,5 +1,5 @@
 name: singlink_vpn
-description: "星連VPN — SingLink VPN desktop client (Flutter UI over the SingLink Protocol core via FFI)."
+description: "SingLinkVPN — SingLink VPN desktop client (Flutter UI over the SingLink Protocol core via FFI)."
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -10,8 +10,6 @@ environment:
 # the macOS target. Persistence uses dart:io, clipboard uses flutter/services.
 dependencies:
   flutter:
-    sdk: flutter
-  flutter_localizations:
     sdk: flutter
   ffi: ^2.1.4
 

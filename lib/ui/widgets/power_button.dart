@@ -73,10 +73,10 @@ class _PowerButtonState extends State<PowerButton>
     final tappable = widget.enabled && !busy;
 
     final label = switch (state) {
-      ConnState.disconnected => '連線',
-      ConnState.connecting => '連線中…',
-      ConnState.connected => '中斷連線',
-      ConnState.disconnecting => '中斷中…',
+      ConnState.disconnected => 'Connect',
+      ConnState.connecting => 'Connecting...',
+      ConnState.connected => 'Disconnect',
+      ConnState.disconnecting => 'Disconnecting...',
     };
 
     // Outer box leaves room for the rings / glow.

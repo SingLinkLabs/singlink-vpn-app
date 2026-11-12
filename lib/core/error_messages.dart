@@ -1,4 +1,4 @@
-/// Turns the core's English error strings into short Traditional Chinese
+/// Turns the core's technical error strings into short, plain English
 /// messages for people who do not know what a "handshake" is. The raw text is
 /// kept as [FriendlyError.detail] for support.
 library;
@@ -16,21 +16,33 @@ class FriendlyError {
   String toString() => message;
 }
 
-const msgExpired = '帳號已到期，請續費或更新伺服器';
-const msgRevoked = '帳號已被停用，請聯絡客服或更新伺服器';
-const msgNotYetValid = '裝置時間不正確，請校正系統時間後再試';
-const msgCapDenied = '你的方案不支援此連線方式，請升級方案或更新伺服器';
-const msgTooManyConns = '同時使用的裝置過多，請先在其他裝置中斷連線';
-const msgUnreachable = '無法連線到伺服器，請換一個地區再試';
-const msgRejected = '伺服器拒絕連線，請確認裝置時間正確或更新伺服器';
-const msgTimeout = '連線逾時，請檢查網絡或換一個地區再試';
-const msgPortInUse = '本機埠已被其他程式佔用，請在「設定 → 進階」更換埠號';
-const msgCoreMissing = '找不到星連VPN 核心元件，請重新安裝 App';
-const msgBadLink = '無法辨識此伺服器連結，請確認已完整複製';
-const msgDropped = '連線已中斷，請重新連線';
-const msgGeneric = '連線失敗，請稍後再試或換一個地區';
-const msgVpnPermission = '需要允許建立 VPN 連線才能使用，請再按一次連線並選擇「允許」';
-const msgVpnUnsupported = '此裝置無法建立 VPN（模擬器不支援），請在 iPhone 上使用';
+const msgExpired = 'Your plan has expired. Renew it or update the server.';
+const msgRevoked =
+    'Your account has been suspended. Contact support or update the server.';
+const msgNotYetValid =
+    "Your device's clock is wrong. Correct the system time and try again.";
+const msgCapDenied =
+    "Your plan doesn't include this connection type. Upgrade your plan or update the server.";
+const msgTooManyConns =
+    'Too many devices are connected at once. Disconnect on another device first.';
+const msgUnreachable = "Can't reach the server. Try another location.";
+const msgRejected =
+    'The server refused the connection. Check that your device time is correct, or update the server.';
+const msgTimeout =
+    'The connection timed out. Check your network or try another location.';
+const msgPortInUse =
+    'The local port is in use by another app. Change it in Settings → Advanced.';
+const msgCoreMissing =
+    "SingLinkVPN's core component is missing. Reinstall the app.";
+const msgBadLink =
+    "This server link isn't recognized. Make sure you copied all of it.";
+const msgDropped = 'The connection dropped. Connect again.';
+const msgGeneric =
+    'Connection failed. Try again later or choose another location.';
+const msgVpnPermission =
+    'SingLinkVPN needs permission to add a VPN. Tap Connect again and choose Allow.';
+const msgVpnUnsupported =
+    "This device can't create a VPN (the simulator isn't supported). Use a real iPhone.";
 
 /// Android name for the same message.
 const msgVpnDenied = msgVpnPermission;
@@ -80,4 +92,4 @@ FriendlyError friendlyLinkError(String raw) {
 
 /// Shown when networksetup could not apply the system proxy.
 String systemProxyFailedMessage(int port) =>
-    '無法設定系統代理，請在系統設定手動設定 SOCKS 127.0.0.1:$port';
+    "Couldn't set the system proxy. Set SOCKS 127.0.0.1:$port manually in System Settings.";

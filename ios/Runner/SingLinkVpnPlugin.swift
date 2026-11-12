@@ -14,7 +14,7 @@
 // {"state":"connected","running":true}.
 //
 // Error texts start with fixed English prefixes ("vpn permission denied",
-// "vpn unsupported") that lib/core/error_messages.dart maps to Chinese.
+// "vpn unsupported") that lib/core/error_messages.dart maps to plain English.
 
 import Flutter
 import NetworkExtension
@@ -90,9 +90,10 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
       proto.providerConfiguration = ["link": link]
       proto.disconnectOnSleep = false
       m.protocolConfiguration = proto
-      m.localizedDescription = "星連VPN"
+      m.localizedDescription = "SingLinkVPN"
       m.isEnabled = true
-      // The first save shows iOS's 「"星連VPN" 想新增 VPN 設定」 prompt.
+      // The first save shows iOS's '"SingLinkVPN" Would Like to Add VPN
+      // Configurations' prompt.
       m.saveToPreferences { error in
         if let error { return reply(Self.fail(error)) }
         // Reload, or the first start after a save fails with

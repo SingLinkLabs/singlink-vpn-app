@@ -1,4 +1,4 @@
-# Builds libsinglink for every 星連VPN platform from ../../singlink-protocol
+# Builds libsinglink for every SingLinkVPN platform from ../../singlink-protocol
 # (see the replace directive in go.mod) plus the TUN bridge in ./tunnel.
 #
 #   make macos    build/macos/libsinglink.dylib       universal, loaded by Flutter FFI

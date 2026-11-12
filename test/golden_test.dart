@@ -30,8 +30,8 @@ void main() {
         clock: () => now,
       );
       await c.init();
-      await c.importLink('singlink://a#香港 01');
-      await c.importLink('singlink://b#日本 東京 02');
+      await c.importLink('singlink://a#Hong Kong 01');
+      await c.importLink('singlink://b#Japan Tokyo 02');
 
       await tester.pumpWidget(SingLinkVpnApp(controller: c, themeMode: mode));
       await c.connect();
@@ -47,9 +47,9 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 450));
 
-      expect(find.text('已受保護'), findsOneWidget);
+      expect(find.text('Protected'), findsOneWidget);
       expect(find.text('01:23:45'), findsOneWidget);
-      expect(find.text('你的 IP：203.0.113.7'), findsOneWidget);
+      expect(find.text('Your IP: 203.0.113.7'), findsOneWidget);
 
       await expectLater(
         find.byType(SingLinkVpnApp),
@@ -66,7 +66,7 @@ void main() {
       addTearDown(tester.view.reset);
       final c = ClientController(core: FakeCore(), store: MemoryStore());
       await c.init();
-      await c.importLink('singlink://a#香港 01');
+      await c.importLink('singlink://a#Hong Kong 01');
       await tester.pumpWidget(SingLinkVpnApp(controller: c, themeMode: mode));
       await tester.pump(const Duration(milliseconds: 600));
       await expectLater(
@@ -84,11 +84,11 @@ void main() {
     final c = ClientController(core: FakeCore(), store: MemoryStore());
     await c.init();
     for (final n in [
-      '香港 01',
-      '日本 東京 02',
+      'Hong Kong 01',
+      'Japan Tokyo 02',
       'Singapore 1',
-      '美國 洛杉磯',
-      'SingLink 本機示範節點',
+      'US Los Angeles',
+      'SingLink local demo node',
     ]) {
       await c.importLink('singlink://$n#$n');
     }
@@ -97,7 +97,7 @@ void main() {
     );
     await c.connect();
     await tester.pump();
-    await tester.tap(find.text('香港').first);
+    await tester.tap(find.text('Hong Kong').first);
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -121,12 +121,12 @@ void main() {
       systemProxy: SystemProxyManager(runner: FakeRunner()),
     );
     await c.init();
-    await c.importLink('singlink://a#香港 01');
-    await c.importLink('singlink://b#日本 東京 02');
+    await c.importLink('singlink://a#Hong Kong 01');
+    await c.importLink('singlink://b#Japan Tokyo 02');
     await tester.pumpWidget(
       SingLinkVpnApp(controller: c, themeMode: ThemeMode.light),
     );
-    await tester.tap(find.byTooltip('設定'));
+    await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     await expectLater(
       find.byType(SingLinkVpnApp),

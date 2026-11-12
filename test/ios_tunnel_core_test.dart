@@ -42,7 +42,7 @@ void main() {
       expect(core.usesLocalProxy, isFalse);
       expect(core.available, isTrue);
       expect((await core.version()).protocol, 'SingLink/1');
-      final p = await core.parseLink('singlink://a#香港 01');
+      final p = await core.parseLink('singlink://a#Hong Kong 01');
       expect(p.ok, isTrue);
       expect(calls, isEmpty, reason: 'parsing never touches the tunnel');
     },
@@ -50,16 +50,19 @@ void main() {
 
   test('start passes the link and the parsed server to the tunnel', () async {
     replies['start'] = (_) => '{"ok":true}';
-    final r = await core.start(link: 'singlink://a#香港 01', listen: 'ignored');
+    final r = await core.start(
+      link: 'singlink://a#Hong Kong 01',
+      listen: 'ignored',
+    );
     expect(r.ok, isTrue);
     expect(calls.single.method, 'start');
     expect(calls.single.arguments, {
-      'link': 'singlink://a#香港 01',
+      'link': 'singlink://a#Hong Kong 01',
       'server': 'node.example.com:443',
     });
   });
 
-  test('start errors are mapped to friendly Chinese messages', () async {
+  test('start errors are mapped to friendly messages', () async {
     replies['start'] = (_) =>
         '{"ok":false,"error":"vpn permission denied: permission denied"}';
     var r = await core.start(link: 'singlink://a', listen: '');

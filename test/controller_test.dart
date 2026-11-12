@@ -34,14 +34,17 @@ void main() {
   test('import validates scheme and stores the server', () async {
     expect((await c.importLink('')), isNotNull);
     expect((await c.importLink('sl3://old'))!.message, contains('singlink://'));
-    expect(await c.importLink('singlink://a#香港 01'), isNull);
-    expect((await c.importLink('singlink://a#香港 01'))!.message, '此伺服器已在列表中');
-    expect(c.profiles.single.name, '香港 01');
-    expect(c.target!.name, '香港 01');
+    expect(await c.importLink('singlink://a#Hong Kong 01'), isNull);
+    expect(
+      (await c.importLink('singlink://a#Hong Kong 01'))!.message,
+      'This server is already in your list.',
+    );
+    expect(c.profiles.single.name, 'Hong Kong 01');
+    expect(c.target!.name, 'Hong Kong 01');
   });
 
   test('connect sets the system proxy, disconnect restores it', () async {
-    await c.importLink('singlink://a#香港 01');
+    await c.importLink('singlink://a#Hong Kong 01');
     await c.connect();
     expect(c.conn, ConnState.connected);
     expect(core.calls, contains('start 127.0.0.1:1080'));
@@ -67,7 +70,10 @@ void main() {
     await c.importLink('singlink://a#Tokyo');
     await c.connect();
     expect(c.conn, ConnState.connected);
-    expect(c.proxyWarning, '無法設定系統代理，請在系統設定手動設定 SOCKS 127.0.0.1:1080');
+    expect(
+      c.proxyWarning,
+      "Couldn't set the system proxy. Set SOCKS 127.0.0.1:1080 manually in System Settings.",
+    );
     await c.disconnect();
   });
 
@@ -101,27 +107,27 @@ void main() {
   });
 
   test('quick connect uses the last-used server', () async {
-    await c.importLink('singlink://a#香港 01');
-    await c.importLink('singlink://b#日本 02');
+    await c.importLink('singlink://a#Hong Kong 01');
+    await c.importLink('singlink://b#Japan 02');
     expect(c.autoSelect, isTrue);
-    expect(c.target!.name, '香港 01');
+    expect(c.target!.name, 'Hong Kong 01');
     await c.chooseServer(c.profiles[1].id);
-    expect(c.target!.name, '日本 02');
+    expect(c.target!.name, 'Japan 02');
     await c.connect();
     await c.disconnect();
     await c.chooseAuto();
-    expect(c.target!.name, '日本 02', reason: 'last used');
+    expect(c.target!.name, 'Japan 02', reason: 'last used');
   });
 
   test('switching location while connected reconnects', () async {
-    await c.importLink('singlink://a#香港 01');
-    await c.importLink('singlink://b#日本 02');
+    await c.importLink('singlink://a#Hong Kong 01');
+    await c.importLink('singlink://b#Japan 02');
     await c.connect();
     core.calls.clear();
     await c.chooseServer(c.profiles[1].id);
     expect(core.calls, ['stop', 'start 127.0.0.1:1080']);
     expect(c.isConnected, isTrue);
-    expect(c.target!.name, '日本 02');
+    expect(c.target!.name, 'Japan 02');
     await c.disconnect();
   });
 

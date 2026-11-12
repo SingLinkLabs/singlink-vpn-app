@@ -1,4 +1,4 @@
-// 星連VPN packet tunnel: the device-wide VPN on iOS.
+// SingLinkVPN packet tunnel: the device-wide VPN on iOS.
 //
 // The system creates a utun interface for this extension; every IP packet
 // routed into it is relayed through the SingLink node by the Go core

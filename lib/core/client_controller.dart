@@ -107,7 +107,7 @@ class ClientController extends ChangeNotifier {
     return null;
   }
 
-  /// Server 「快速連線」 would use: last used, else the first one.
+  /// Server "Quick connect" would use: last used, else the first one.
   Profile? get autoProfile =>
       _byId(_state.lastUsedId) ??
       (_state.profiles.isEmpty ? null : _state.profiles.first);
@@ -131,19 +131,23 @@ class ClientController extends ChangeNotifier {
     if (sp != null) {
       // A previous run that crashed while connected left the system proxy on.
       final r = await sp.recover();
-      if (r.changed.isNotEmpty) log('已還原上次未正常結束時的系統代理設定');
-      if (!r.ok) log('還原系統代理失敗：${r.failed}', LogLevel.error);
+      if (r.changed.isNotEmpty) {
+        log('Restored the system proxy settings left from an unexpected exit');
+      }
+      if (!r.ok) {
+        log('Could not restore the system proxy: ${r.failed}', LogLevel.error);
+      }
     }
     if (core.available) {
-      log('已載入核心：${core.location.path}');
+      log('Core loaded: ${core.location.path}');
       try {
         coreVersion = await core.version();
-        log('核心版本 $coreVersion');
+        log('Core version $coreVersion');
       } catch (e) {
-        log('讀取核心版本失敗：$e', LogLevel.error);
+        log('Could not read the core version: $e', LogLevel.error);
       }
     } else {
-      log('找不到核心 libsinglink.dylib', LogLevel.error);
+      log('Core library libsinglink.dylib not found', LogLevel.error);
     }
     _notify();
   }
@@ -165,25 +169,27 @@ class ClientController extends ChangeNotifier {
   Future<FriendlyError?> importLink(String link) async {
     final trimmed = link.trim();
     if (trimmed.isEmpty) {
-      return const FriendlyError('請先貼上伺服器連結');
+      return const FriendlyError('Paste a server link first.');
     }
     if (!trimmed.toLowerCase().startsWith(linkScheme)) {
-      return const FriendlyError('這不是星連VPN 的伺服器連結（應以 $linkScheme 開頭）');
+      return const FriendlyError(
+        'This is not a SingLinkVPN server link. It should start with $linkScheme',
+      );
     }
     for (final p in _state.profiles) {
       if (p.link == trimmed) {
-        return const FriendlyError('此伺服器已在列表中');
+        return const FriendlyError('This server is already in your list.');
       }
     }
     final res = await core.parseLink(trimmed);
     if (!res.ok) {
-      log('新增伺服器失敗：${res.error}', LogLevel.error);
+      log('Could not add server: ${res.error}', LogLevel.error);
       return friendlyLinkError(res.error ?? '');
     }
     final profile = res.profile!;
     _state.profiles.add(profile);
     await _save();
-    log('已新增伺服器「${profile.displayName}」', LogLevel.success);
+    log('Added server "${profile.displayName}"', LogLevel.success);
     return null;
   }
 
@@ -200,10 +206,10 @@ class ClientController extends ChangeNotifier {
     }
     if (_state.lastUsedId == id) _state.lastUsedId = null;
     await _save();
-    log('已刪除伺服器「${removed.displayName}」');
+    log('Deleted server "${removed.displayName}"');
   }
 
-  /// 「快速連線（自動）」.
+  /// "Quick connect (auto)".
   Future<void> chooseAuto() => _choose(auto: true, id: null);
 
   Future<void> chooseServer(String id) => _choose(auto: false, id: id);
@@ -240,12 +246,12 @@ class ClientController extends ChangeNotifier {
 
   /// Only while disconnected. Returns an error message or null.
   Future<String?> setPort(int port) async {
-    if (conn != ConnState.disconnected) return '請先中斷連線再修改';
+    if (conn != ConnState.disconnected) return 'Disconnect first to change it';
     final err = validatePort('$port');
     if (err != null) return err;
     _state.port = port;
     await _save();
-    log('本機埠已設為 $port');
+    log('Local port set to $port');
     return null;
   }
 
@@ -269,7 +275,9 @@ class ClientController extends ChangeNotifier {
       return;
     }
     if (profile == null) {
-      error = const FriendlyError('尚未新增伺服器，請到「設定 → 新增伺服器」');
+      error = const FriendlyError(
+        'No servers yet. Go to Settings → Add server.',
+      );
       _notify();
       return;
     }
@@ -280,7 +288,7 @@ class ClientController extends ChangeNotifier {
     exitIp = null;
     latencyMs = null;
     _notify();
-    log('正在連線「${profile.displayName}」…');
+    log('Connecting to "${profile.displayName}"...');
 
     final res = await core.start(link: profile.link, listen: _state.listen);
     if (_disposed) return;
@@ -288,7 +296,7 @@ class ClientController extends ChangeNotifier {
       conn = ConnState.disconnected;
       _connectedId = null;
       error = friendlyError(res.error);
-      log('連線失敗：${res.error}', LogLevel.error);
+      log('Connection failed: ${res.error}', LogLevel.error);
       return;
     }
 
@@ -304,8 +312,8 @@ class ClientController extends ChangeNotifier {
     await _save();
     log(
       core.usesLocalProxy
-          ? '已連線「${profile.displayName}」（本機代理 ${_state.listen}）'
-          : '已連線「${profile.displayName}」（全裝置 VPN）',
+          ? 'Connected to "${profile.displayName}" (local proxy ${_state.listen})'
+          : 'Connected to "${profile.displayName}" (device-wide VPN)',
       LogLevel.success,
     );
     _startPolling();
@@ -322,9 +330,9 @@ class ClientController extends ChangeNotifier {
     await _restoreSystemProxy();
     final res = await core.stop();
     if (_disposed) return;
-    if (!res.ok) log('停止時發生錯誤：${res.error}', LogLevel.error);
+    if (!res.ok) log('Error while stopping: ${res.error}', LogLevel.error);
     _resetDisconnected();
-    log('已中斷連線');
+    log('Disconnected');
   }
 
   /// Called when the app quits: undo the system proxy and stop the core.
@@ -343,10 +351,10 @@ class ClientController extends ChangeNotifier {
     final r = await sp.enable(_state.port);
     if (r.ok) {
       proxyWarning = null;
-      log('已設定系統代理（${r.changed.join('、')}）', LogLevel.success);
+      log('System proxy set (${r.changed.join(', ')})', LogLevel.success);
     } else {
       proxyWarning = systemProxyFailedMessage(_state.port);
-      log('設定系統代理失敗：${r.failed}', LogLevel.error);
+      log('Could not set the system proxy: ${r.failed}', LogLevel.error);
     }
   }
 
@@ -355,9 +363,9 @@ class ClientController extends ChangeNotifier {
     if (sp == null || !sp.isApplied) return;
     final r = await sp.restore();
     if (r.ok) {
-      log('已還原系統代理設定');
+      log('System proxy settings restored');
     } else {
-      log('還原系統代理失敗：${r.failed}', LogLevel.error);
+      log('Could not restore the system proxy: ${r.failed}', LogLevel.error);
     }
   }
 
@@ -369,7 +377,7 @@ class ClientController extends ChangeNotifier {
     exitIpLoading = false;
     if (!isConnected) return _notify();
     exitIp = r.ok ? r.ip : null;
-    if (!r.ok) log('查詢 IP 失敗：${r.error}', LogLevel.error);
+    if (!r.ok) log('IP lookup failed: ${r.error}', LogLevel.error);
     _notify();
   }
 
@@ -383,7 +391,7 @@ class ClientController extends ChangeNotifier {
     if (_disposed) return;
     measuring = false;
     if (isConnected) latencyMs = r.ok ? r.latencyMs : null;
-    if (!r.ok) log('測速失敗：${r.error}', LogLevel.error);
+    if (!r.ok) log('Latency test failed: ${r.error}', LogLevel.error);
     _notify();
   }
 
@@ -430,7 +438,7 @@ class ClientController extends ChangeNotifier {
       _sampleUp = s.up;
       _sampleDown = s.down;
       if (s.lastError.isNotEmpty && s.lastError != status.lastError) {
-        log('核心：${s.lastError}', LogLevel.error);
+        log('Core: ${s.lastError}', LogLevel.error);
       }
       status = s;
       if (!s.running) {
@@ -442,13 +450,13 @@ class ClientController extends ChangeNotifier {
         _resetDisconnected();
         error = err;
         log(
-          '連線已中斷：${err.detail.isEmpty ? err.message : err.detail}',
+          'Connection dropped: ${err.detail.isEmpty ? err.message : err.detail}',
           LogLevel.error,
         );
       }
       _notify();
     } catch (e) {
-      log('讀取狀態失敗：$e', LogLevel.error);
+      log('Could not read status: $e', LogLevel.error);
     } finally {
       _pollInFlight = false;
     }
@@ -458,7 +466,9 @@ class ClientController extends ChangeNotifier {
     try {
       await store.save(_state);
     } catch (e) {
-      logs.add(LogEntry(clock(), '儲存設定失敗：$e', LogLevel.error));
+      logs.add(
+        LogEntry(clock(), 'Could not save settings: $e', LogLevel.error),
+      );
     }
     _notify();
   }

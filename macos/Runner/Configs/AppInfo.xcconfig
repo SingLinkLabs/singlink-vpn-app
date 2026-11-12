@@ -1,7 +1,7 @@
 // Application-level settings for the Runner target.
 
 // The application's name (bundle file name SingLinkVPN.app and executable name).
-// The user-visible name 「星連VPN」 is CFBundleDisplayName in Info.plist.
+// The user-visible name "SingLinkVPN" is CFBundleDisplayName in Info.plist.
 PRODUCT_NAME = SingLinkVPN
 
 // The application's bundle identifier
