@@ -26,7 +26,7 @@ class OpResult {
 }
 
 /// `SingLinkVersion`:
-/// `{"version":"1.0.0-draft","protocol":"SingLink/1","attribution":"..."}`.
+/// `{"version":"1.0.0-draft","protocol":"SingLink Beta","attribution":"..."}`.
 class CoreVersion {
   const CoreVersion(this.version, this.protocol, [this.attribution = '']);
 
@@ -36,11 +36,15 @@ class CoreVersion {
   /// Attribution compiled into the native core (see NOTICE).
   final String attribution;
 
-  factory CoreVersion.fromJson(Map<String, dynamic> json) => CoreVersion(
-    _str(json['version']),
-    _str(json['protocol']),
-    _str(json['attribution']),
-  );
+  factory CoreVersion.fromJson(Map<String, dynamic> json) {
+    final protocol = _str(json['protocol']);
+    return CoreVersion(
+      _str(json['version']),
+      // Older native cores return the legacy compatibility label here.
+      protocol == 'SingLink/1' ? 'SingLink Beta' : protocol,
+      _str(json['attribution']),
+    );
+  }
 
   @override
   String toString() {
