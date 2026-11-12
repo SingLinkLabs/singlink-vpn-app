@@ -156,7 +156,7 @@ void main() {
     final r = await core.start(link: 'singlink://x', listen: '');
     expect(r.ok, isFalse);
     expect(r.error, vpnPermissionDenied);
-    expect(friendlyError(r.error).message, '需要允許建立 VPN 連線');
+    expect(friendlyError(r.error).message, msgVpnPermission);
     expect(methods(), ['prepare']);
     expect(calls.log, isEmpty);
   });

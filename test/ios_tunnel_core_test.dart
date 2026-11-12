@@ -64,7 +64,7 @@ void main() {
         '{"ok":false,"error":"vpn permission denied: permission denied"}';
     var r = await core.start(link: 'singlink://a', listen: '');
     expect(r.ok, isFalse);
-    expect(friendlyError(r.error).message, '需要允許新增 VPN 設定');
+    expect(friendlyError(r.error).message, msgVpnPermission);
 
     replies['start'] = (_) =>
         '{"ok":false,"error":"vpn unsupported: the iOS Simulator cannot run a Network Extension packet tunnel"}';
