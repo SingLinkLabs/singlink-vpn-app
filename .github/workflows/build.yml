@@ -1,0 +1,271 @@
+# Builds 星連VPN for every platform and runs the tests.
+#
+# Layout on every runner (the core's go.mod has
+# `replace github.com/SingLinkLabs/singlink-protocol => ../../singlink-protocol`,
+# relative to singlink-vpn-app/core):
+#
+#   $GITHUB_WORKSPACE/singlink-vpn-app/    this repository
+#   $GITHUB_WORKSPACE/singlink-protocol/   SingLinkLabs/singlink-protocol
+#
+# PROTOCOL_REPO_TOKEN: only needed while SingLinkLabs/singlink-protocol is
+# private. Use a fine-grained token with read-only "Contents" access to that
+# repository. Once the protocol repo is public the default github.token is
+# enough and the secret can be deleted.
+name: build
+
+on:
+  push:
+    branches: [main, 'platform/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.35.6'
+  APP: singlink-vpn-app
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: tests (go + flutter)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: singlink-vpn-app
+      - uses: actions/checkout@v4
+        with:
+          repository: SingLinkLabs/singlink-protocol
+          path: singlink-protocol
+          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: singlink-vpn-app/core/go.mod
+          cache-dependency-path: singlink-vpn-app/core/go.sum
+      - name: go vet + go test (core)
+        working-directory: singlink-vpn-app/core
+        run: |
+          go vet ./...
+          go test -race ./...
+      - name: go vet (core, GOOS=windows)
+        working-directory: singlink-vpn-app/core
+        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./tunnel/...
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - working-directory: singlink-vpn-app
+        run: flutter pub get
+      - name: flutter analyze
+        working-directory: singlink-vpn-app
+        run: flutter analyze
+      - name: flutter test (all but goldens)
+        working-directory: singlink-vpn-app
+        run: flutter test $(ls test/*_test.dart | grep -v golden_test.dart)
+      # Goldens are rendered with the developer's macOS fonts; a different
+      # macOS image can shift glyphs by a pixel, so they only warn here.
+      - name: flutter test (goldens, informational)
+        id: goldens
+        continue-on-error: true
+        working-directory: singlink-vpn-app
+        run: flutter test test/golden_test.dart
+      - if: steps.goldens.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failures
+          path: singlink-vpn-app/test/failures/
+          if-no-files-found: ignore
+
+  windows:
+    name: windows (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: singlink-vpn-app
+      - uses: actions/checkout@v4
+        with:
+          repository: SingLinkLabs/singlink-protocol
+          path: singlink-protocol
+          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: singlink-vpn-app/core/go.mod
+          cache-dependency-path: singlink-vpn-app/core/go.sum
+      - name: MinGW-w64 gcc (cgo)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
+            choco install mingw --no-progress -y
+            "C:\ProgramData\mingw64\mingw64\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          }
+      - name: Build singlink.dll
+        working-directory: singlink-vpn-app/core
+        # Same command as `make -C core windows` (core/Makefile), with MinGW
+        # gcc as the C compiler.
+        env:
+          CGO_ENABLED: '1'
+          GOOS: windows
+          GOARCH: amd64
+          CC: gcc
+        run: |
+          gcc --version | head -1
+          mkdir -p build/windows
+          go build -trimpath -buildmode=c-shared -ldflags='-s -w' -o build/windows/singlink.dll ./ffi
+          ls -l build/windows
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - working-directory: singlink-vpn-app
+        run: flutter pub get
+      - name: Windows system proxy tests (fake + real registry)
+        working-directory: singlink-vpn-app
+        env:
+          SINGLINK_WINDOWS_REGISTRY_TEST: '1'
+        run: flutter test test/windows_system_proxy_test.dart test/windows_registry_smoke_test.dart
+      - name: flutter build windows
+        working-directory: singlink-vpn-app
+        env:
+          SINGLINK_REQUIRE_CORE: '1'
+        run: flutter build windows --release
+      - name: Check bundle
+        working-directory: singlink-vpn-app/build/windows/x64/runner/Release
+        run: |
+          ls -l
+          test -f SingLinkVPN.exe
+          test -f singlink.dll
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path singlink-vpn-app\build\windows\x64\runner\Release\* -DestinationPath SingLinkVPN-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SingLinkVPN-windows-x64
+          path: SingLinkVPN-windows-x64.zip
+          if-no-files-found: error
+
+  android:
+    name: android (apk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: singlink-vpn-app
+      - uses: actions/checkout@v4
+        with:
+          repository: SingLinkLabs/singlink-protocol
+          path: singlink-protocol
+          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: singlink-vpn-app/core/go.mod
+          cache-dependency-path: singlink-vpn-app/core/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build libsinglink.so (NDK)
+        # The runner image ships the Android SDK and NDK; the Makefile's
+        # NDK_BIN defaults to the macOS host toolchain, so point it at Linux.
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          echo "NDK: $NDK"
+          make -C singlink-vpn-app/core android \
+            ANDROID_NDK_HOME="$NDK" \
+            NDK_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          find singlink-vpn-app/core/build/android -name '*.so' -exec ls -l {} +
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: flutter build apk
+        working-directory: singlink-vpn-app
+        run: |
+          flutter pub get
+          flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SingLinkVPN-android-apk
+          path: singlink-vpn-app/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+
+  macos:
+    name: macos
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: singlink-vpn-app
+      - uses: actions/checkout@v4
+        with:
+          repository: SingLinkLabs/singlink-protocol
+          path: singlink-protocol
+          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: singlink-vpn-app/core/go.mod
+          cache-dependency-path: singlink-vpn-app/core/go.sum
+      - name: Build libsinglink.dylib
+        run: make -C singlink-vpn-app/core macos
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: flutter build macos
+        working-directory: singlink-vpn-app
+        env:
+          # scripts/bundle_core_macos.sh copies this dylib into the .app.
+          SINGLINK_CORE_LIB: ${{ github.workspace }}/singlink-vpn-app/core/build/macos/libsinglink.dylib
+        run: |
+          flutter pub get
+          flutter build macos --release
+      - name: Zip
+        working-directory: singlink-vpn-app/build/macos/Build/Products/Release
+        run: ditto -c -k --keepParent SingLinkVPN.app "$GITHUB_WORKSPACE/SingLinkVPN-macos.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SingLinkVPN-macos
+          path: SingLinkVPN-macos.zip
+          if-no-files-found: error
+
+  ios:
+    name: ios (no codesign)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: singlink-vpn-app
+      - uses: actions/checkout@v4
+        with:
+          repository: SingLinkLabs/singlink-protocol
+          path: singlink-protocol
+          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: singlink-vpn-app/core/go.mod
+          cache-dependency-path: singlink-vpn-app/core/go.sum
+      - name: Build Singlink.xcframework
+        run: make -C singlink-vpn-app/core ios
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: flutter build ios
+        working-directory: singlink-vpn-app
+        run: |
+          flutter pub get
+          flutter build ios --release --no-codesign

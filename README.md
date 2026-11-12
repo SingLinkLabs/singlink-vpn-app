@@ -177,3 +177,52 @@ lib/ui/home_page.dart                main screen
 lib/ui/settings_page.dart            settings, add server, log
 lib/ui/widgets/                      power button, location card/sheet, speed, notices
 ```
+
+## Windows (`platform/windows`)
+
+System-proxy mode, like macOS: the core (`singlink.dll`, loaded with
+`dart:ffi`) opens the local SOCKS5 port and the app points the per-user
+WinINet proxy at it.
+
+- **Core:** `make -C core windows` → `core/build/windows/singlink.dll`
+  (cgo `c-shared`, x86-64). The Makefile's default
+  `WIN_CC = zig cc -target x86_64-windows-gnu` works from macOS once `zig` is
+  on `PATH`, e.g. the official tarball unpacked to
+  `$HOME/toolchains/zig` (tested with zig 0.17.1):
+  `PATH="$HOME/toolchains/zig:$PATH" make -C core windows`.
+  On Windows use MinGW-w64: `make -C core windows WIN_CC=gcc`.
+- **App:** `flutter build windows --release` (Windows host with Visual Studio
+  only) → `build\windows\x64\runner\Release\SingLinkVPN.exe`. The CMake
+  install step copies `core/build/windows/singlink.dll` next to the .exe if it
+  exists (`SINGLINK_REQUIRE_CORE=1` makes a missing core an error). Window:
+  「星連VPN」, 420×760, minimum 380×620.
+- **System proxy** (`lib/platform/windows.dart`), in
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`:
+  `ProxyEnable=1`, `ProxyServer=127.0.0.1:<port>` (HTTP proxy),
+  `ProxyOverride=<local>;localhost;127.*;10.*;172.16.*;192.168.*`, and
+  `AutoConfigURL` (PAC) removed while connected. The previous values —
+  including which did not exist — are journaled to
+  `%APPDATA%\SingLinkLabs\SingLinkVPN\system-proxy-restore.json` first and
+  written back exactly (absent ones deleted) on disconnect, quit, or the next
+  launch after a crash. Running programs are notified with
+  `InternetSetOptionW` (SETTINGS_CHANGED, REFRESH). All registry access goes
+  through `reg.exe` and a `ProcessRunner`; `test/windows_system_proxy_test.dart`
+  uses a fake, `test/windows_registry_smoke_test.dart` runs against the real
+  registry on Windows with `SINGLINK_WINDOWS_REGISTRY_TEST=1` (CI does).
+- **Why HTTP:** WinINet (and Chromium reading a scheme-less `socks=` entry)
+  only speaks SOCKS v4. The core's local port speaks both SOCKS5 and HTTP
+  proxy (CONNECT for HTTPS), so Windows is pointed at it as an HTTP proxy,
+  which every WinINet client supports. `WindowsProxyMode.socks5`
+  (`socks=socks5://…`, Chromium only) remains available.
+
+## CI (`.github/workflows/build.yml`)
+
+Jobs: tests (go vet/test of `core`, `flutter analyze`, `flutter test`;
+goldens informational), windows (MinGW `singlink.dll`, real-registry test,
+`flutter build windows`, zipped Release folder artifact), android
+(`make -C core android` with the runner's NDK, `flutter build apk`), macos
+(`make -C core macos`, `flutter build macos`), ios (`make -C core ios`,
+`flutter build ios --no-codesign`). The app is checked out to
+`singlink-vpn-app/` and `SingLinkLabs/singlink-protocol` to
+`singlink-protocol/` so `core/go.mod`'s `../../singlink-protocol` resolves;
+the `PROTOCOL_REPO_TOKEN` secret is needed only while that repo is private.
