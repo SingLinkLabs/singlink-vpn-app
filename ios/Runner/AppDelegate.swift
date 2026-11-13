@@ -28,6 +28,7 @@ import UIKit
       if let flutter = window.rootViewController as? FlutterViewController,
          let registrar = flutter.registrar(forPlugin: "SingLinkVpnPlugin") {
         SingLinkVpnPlugin.register(with: registrar)
+        SecretStorePlugin.register(with: registrar)
         vpnPluginRegistered = true
         return
       }

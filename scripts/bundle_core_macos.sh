@@ -35,6 +35,10 @@ else
   LIB_SRC="$PROTOCOL_CORE_LIB"
 fi
 LIB_NAME="libsinglink.dylib"
+python3 "$SCRIPT_DIR/protocol_provenance.py" verify
+if [[ -f "$LIB_SRC" ]]; then
+  python3 "$SCRIPT_DIR/protocol_provenance.py" check-artifact "$LIB_SRC"
+fi
 
 warn() { echo "warning: [singlink] $*" >&2; }
 die() { echo "error: [singlink] $*" >&2; exit 1; }

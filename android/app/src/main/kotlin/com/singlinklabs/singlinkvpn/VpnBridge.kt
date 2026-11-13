@@ -28,16 +28,25 @@ object VpnBridge {
 
     /** Last TUN descriptor handed to Dart (owned by the core once started). */
     private var lastFd: Int = -1
+    private var epoch: Long = 0
+    fun isPending(generation: Long) = generation == epoch && pendingEstablish != null
+    fun hasSession() = pendingEstablish != null || lastFd >= 0
 
     private val main = Handler(Looper.getMainLooper())
 
-    fun awaitEstablish(result: MethodChannel.Result, mtu: Int) {
+    fun awaitEstablish(result: MethodChannel.Result, mtu: Int): Long {
+        epoch += 1
         pendingEstablish?.error("superseded", "a newer establish call replaced this one", null)
         pendingEstablish = result
         pendingMtu = mtu
+        return epoch
     }
 
-    fun establishDone(fd: Int) {
+    fun establishDone(fd: Int, generation: Long) {
+        if (!isPending(generation)) {
+            try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Exception) {}
+            return
+        }
         lastFd = fd
         pendingEstablish?.success(fd)
         pendingEstablish = null
@@ -54,6 +63,7 @@ object VpnBridge {
      * interface.
      */
     fun stop(closeFd: Boolean) {
+        epoch += 1
         if (closeFd && lastFd >= 0) {
             try {
                 ParcelFileDescriptor.adoptFd(lastFd).close()

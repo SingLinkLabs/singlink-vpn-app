@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		180A4BAC9D3E0201CE396ABA /* CredentialKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBE7CB687B3A4620E01C4888 /* CredentialKeychain.swift */; };
+		4482DE8C207EEDC41801EEC2 /* CredentialKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBE7CB687B3A4620E01C4888 /* CredentialKeychain.swift */; };
+		8BC24BD8B9D92D9A908DA2B5 /* SecretStorePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3A20E19A055DBED895CE5E /* SecretStorePlugin.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -65,6 +68,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		CBE7CB687B3A4620E01C4888 /* CredentialKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../apple/CredentialKeychain.swift"; sourceTree = SOURCE_ROOT; };
+		7C3A20E19A055DBED895CE5E /* SecretStorePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runner/SecretStorePlugin.swift"; sourceTree = SOURCE_ROOT; };
 		11C360D448C59D398B415E79 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
@@ -113,6 +118,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		598E942CAE8DE1E9F6B96C3E /* Security Credentials */ = {isa = PBXGroup; children = (CBE7CB687B3A4620E01C4888, 7C3A20E19A055DBED895CE5E,); name = "Security Credentials"; sourceTree = "<group>"; };
 		331C8082294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -156,6 +162,7 @@
 		97C146E51CF9000F007C117D = {
 			isa = PBXGroup;
 			children = (
+				598E942CAE8DE1E9F6B96C3E /* Security Credentials */,
 				9740EEB11CF90186004384FC /* Flutter */,
 				97C146F01CF9000F007C117D /* Runner */,
 				97C146EF1CF9000F007C117D /* Products */,
@@ -199,6 +206,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A5BE1A2FC13F7A6CCCD65A55 /* Build configuration list for PBXNativeTarget "PacketTunnel" */;
 			buildPhases = (
+				53C111AAA2214AFD937A0001 /* Verify approved core */,
 				3AAC61E637C48B1DEDB8650D /* Sources */,
 				1C7DEA249F1FB06674C9B0E9 /* Frameworks */,
 				EFC4D06A144B786E1605695F /* Resources */,
@@ -233,6 +241,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
 			buildPhases = (
+				53C111AAA2214AFD937A0002 /* Verify approved core */,
 				9740EEB61CF901F6004384FC /* Run Script */,
 				97C146EA1CF9000F007C117D /* Sources */,
 				97C146EB1CF9000F007C117D /* Frameworks */,
@@ -351,6 +360,30 @@
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
 		};
+		53C111AAA2214AFD937A0001 /* Verify approved core */ = {
+            isa = PBXShellScriptBuildPhase;
+            alwaysOutOfDate = 1;
+            buildActionMask = 2147483647;
+            files = ();
+            inputPaths = ();
+            outputPaths = ();
+            name = "Verify approved core";
+            runOnlyForDeploymentPostprocessing = 0;
+            shellPath = /bin/bash;
+            shellScript = "\"$PROJECT_DIR/../scripts/verify_ios_core.sh\"\n";
+        };
+		53C111AAA2214AFD937A0002 /* Verify approved core */ = {
+            isa = PBXShellScriptBuildPhase;
+            alwaysOutOfDate = 1;
+            buildActionMask = 2147483647;
+            files = ();
+            inputPaths = ();
+            outputPaths = ();
+            name = "Verify approved core";
+            runOnlyForDeploymentPostprocessing = 0;
+            shellPath = /bin/bash;
+            shellScript = "\"$PROJECT_DIR/../scripts/verify_ios_core.sh\"\n";
+        };
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -366,6 +399,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4482DE8C207EEDC41801EEC2 /* CredentialKeychain.swift in Sources */,
 				A2B2CBCA8C3C16732D6E7089 /* PacketTunnelProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -374,6 +408,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				180A4BAC9D3E0201CE396ABA /* CredentialKeychain.swift in Sources */,
+				8BC24BD8B9D92D9A908DA2B5 /* SecretStorePlugin.swift in Sources */,
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				EAB2F942ADA5E73153180D37 /* SingLinkVpnPlugin.swift in Sources */,

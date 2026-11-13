@@ -174,6 +174,15 @@ if thin && phases.index(embed) > phases.index(thin)
   phases.insert(phases.index(thin), embed)
 end
 
+[runner, ext].each do |target|
+  phase = target.shell_script_build_phases.find { |p| p.name == 'Verify approved core' } || target.new_shell_script_build_phase('Verify approved core')
+  phase.shell_path = '/bin/bash'
+  phase.shell_script = '"$PROJECT_DIR/../scripts/verify_ios_core.sh"'
+  phase.always_out_of_date = '1'
+  target.build_phases.delete(phase)
+  target.build_phases.insert(0, phase)
+end
+
 # Keep the shared Runner scheme as is: it builds dependencies implicitly.
 project.save
 puts "[setup_ios_tunnel] #{PROJECT_PATH}: targets #{project.targets.map(&:name).join(', ')}"

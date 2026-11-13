@@ -16,21 +16,25 @@ ANDROID_API = 24
 WIN_CC ?= zig cc -target x86_64-windows-gnu
 APPLE = build/apple
 
-.PHONY: test macos android ios windows
+.PHONY: verify-protocol test macos android ios windows
 
-test:
+verify-protocol:
+	python3 ../scripts/protocol_provenance.py verify
+
+test: verify-protocol
 	$(GO) vet ./...
 	$(GO) test -race ./...
 
-macos:
+macos: verify-protocol
 	mkdir -p build/macos
 	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 CC="clang -arch arm64" $(GO) build -trimpath -buildmode=c-shared -ldflags='$(LDF) -extldflags=-Wl,-install_name,@rpath/libsinglink.dylib' -o build/macos/arm64.dylib ./ffi
 	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 CC="clang -arch x86_64" $(GO) build -trimpath -buildmode=c-shared -ldflags='$(LDF) -extldflags=-Wl,-install_name,@rpath/libsinglink.dylib' -o build/macos/amd64.dylib ./ffi
 	lipo -create -output build/macos/libsinglink.dylib build/macos/arm64.dylib build/macos/amd64.dylib
 	mv -f build/macos/arm64.h build/macos/libsinglink.h
 	cd build/macos && $(RM) arm64.dylib amd64.dylib amd64.h
+	python3 ../scripts/protocol_provenance.py record build/macos/libsinglink.dylib
 
-android:
+android: verify-protocol
 	for t in arm64-v8a:arm64:aarch64-linux-android armeabi-v7a:arm:armv7a-linux-androideabi x86_64:amd64:x86_64-linux-android; do \
 	  abi=$${t%%:*}; rest=$${t#*:}; arch=$${rest%%:*}; triple=$${rest#*:}; \
 	  mkdir -p build/android/$$abi; \
@@ -38,8 +42,9 @@ android:
 	    $(GO) build -trimpath -buildmode=c-shared -ldflags='$(LDF) -extldflags=-Wl,-soname,libsinglink.so,-z,max-page-size=16384' -o build/android/$$abi/libsinglink.so ./ffi || exit 1; \
 	  $(RM) build/android/$$abi/libsinglink.h; \
 	done
+	python3 ../scripts/protocol_provenance.py record build/android/*/libsinglink.so
 
-ios:
+ios: verify-protocol
 	mkdir -p $(APPLE)/ios-arm64/include $(APPLE)/ios-sim-arm64/include $(APPLE)/macos-arm64/include
 	CGO_ENABLED=1 GOOS=ios GOARCH=arm64 CC="$$(xcrun -sdk iphoneos -f clang) -arch arm64 -isysroot $$(xcrun -sdk iphoneos --show-sdk-path) -miphoneos-version-min=$(IOS_MIN)" \
 	  $(GO) build -trimpath -buildmode=c-archive -ldflags='$(LDF)' -o $(APPLE)/ios-arm64/libsinglink.a ./ffi
@@ -54,7 +59,10 @@ ios:
 	  -library $(APPLE)/ios-sim-arm64/libsinglink.a -headers $(APPLE)/ios-sim-arm64/include \
 	  -library $(APPLE)/macos-arm64/libsinglink.a -headers $(APPLE)/macos-arm64/include \
 	  -output $(APPLE)/Singlink.xcframework
+	python3 ../scripts/protocol_provenance.py record $(APPLE)/ios-arm64/libsinglink.a $(APPLE)/ios-sim-arm64/libsinglink.a $(APPLE)/macos-arm64/libsinglink.a
+	find $(APPLE)/Singlink.xcframework -name libsinglink.a -type f -exec python3 ../scripts/protocol_provenance.py record {} +
 
-windows:
+windows: verify-protocol
 	mkdir -p build/windows
 	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC="$(WIN_CC)" $(GO) build -trimpath -buildmode=c-shared -ldflags='$(LDF)' -o build/windows/singlink.dll ./ffi
+	python3 ../scripts/protocol_provenance.py record build/windows/singlink.dll

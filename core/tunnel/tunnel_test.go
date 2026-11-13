@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -87,7 +88,11 @@ func node(t *testing.T) *singlink.Client {
 	key, _ := singlink.GenerateServerKey()
 	issuer, _ := singlink.GenerateEd25519()
 	dev, _ := singlink.GenerateEd25519()
-	srv, err := singlink.NewServer(singlink.ServerConfig{Key: key, Issuers: singlink.NewIssuers(issuer.Public().(ed25519.PublicKey)), AllowPrivate: true})
+	replay, err := singlink.InitializeReplayFile(filepath.Join(t.TempDir(), "state", "replay.db"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := singlink.NewServer(singlink.ServerConfig{ReplayStore: replay, Key: key, Issuers: singlink.NewIssuers(issuer.Public().(ed25519.PublicKey)), AllowPrivate: true})
 	if err != nil {
 		t.Fatal(err)
 	}

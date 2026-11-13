@@ -7,10 +7,7 @@
 #   $GITHUB_WORKSPACE/singlink-vpn-app/    this repository
 #   $GITHUB_WORKSPACE/singlink-protocol/   SingLinkLabs/singlink-protocol
 #
-# PROTOCOL_REPO_TOKEN: only needed while SingLinkLabs/singlink-protocol is
-# private. Use a fine-grained token with read-only "Contents" access to that
-# repository. Once the protocol repo is public the default github.token is
-# enough and the secret can be deleted.
+# Public protocol source is checked out at the immutable reviewed revision.
 name: build
 
 on:
@@ -42,11 +39,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: singlink-vpn-app
+      - name: Read approved protocol revision
+        id: protocol-pin
+        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
+          ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
-          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+          token: ${{ github.token }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: singlink-vpn-app/core/go.mod
@@ -54,8 +55,11 @@ jobs:
       - name: go vet + go test (core)
         working-directory: singlink-vpn-app/core
         run: |
+          python3 ../scripts/protocol_provenance.py verify
           go vet ./...
           go test -race ./...
+      - name: Build core for synthetic parser integration
+        run: make -C singlink-vpn-app/core macos
       - name: go vet (core, GOOS=windows)
         working-directory: singlink-vpn-app/core
         run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./tunnel/...
@@ -66,6 +70,9 @@ jobs:
           cache: true
       - working-directory: singlink-vpn-app
         run: flutter pub get
+      - name: Source and signing safety gates
+        working-directory: singlink-vpn-app
+        run: python3 scripts/test_security_build_gates.py
       - name: flutter analyze
         working-directory: singlink-vpn-app
         run: flutter analyze
@@ -93,11 +100,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: singlink-vpn-app
+      - name: Read approved protocol revision
+        id: protocol-pin
+        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
+          ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
-          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+          token: ${{ github.token }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: singlink-vpn-app/core/go.mod
@@ -122,6 +133,7 @@ jobs:
           gcc --version | head -1
           mkdir -p build/windows
           go build -trimpath -buildmode=c-shared -ldflags='-s -w' -o build/windows/singlink.dll ./ffi
+          python3 ../scripts/protocol_provenance.py record build/windows/singlink.dll
           ls -l build/windows
       - uses: subosito/flutter-action@v2
         with:
@@ -162,11 +174,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: singlink-vpn-app
+      - name: Read approved protocol revision
+        id: protocol-pin
+        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
+          ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
-          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+          token: ${{ github.token }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: singlink-vpn-app/core/go.mod
@@ -194,10 +210,10 @@ jobs:
         working-directory: singlink-vpn-app
         run: |
           flutter pub get
-          flutter build apk --release
+          flutter build apk --debug
       - uses: actions/upload-artifact@v4
         with:
-          name: SingLinkVPN-android-apk
+          name: SingLinkVPN-android-DEMO-debug-apk
           path: singlink-vpn-app/build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
 
@@ -208,11 +224,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: singlink-vpn-app
+      - name: Read approved protocol revision
+        id: protocol-pin
+        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
+          ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
-          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+          token: ${{ github.token }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: singlink-vpn-app/core/go.mod
@@ -248,11 +268,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: singlink-vpn-app
+      - name: Read approved protocol revision
+        id: protocol-pin
+        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
+          ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
-          token: ${{ secrets.PROTOCOL_REPO_TOKEN || github.token }}
+          token: ${{ github.token }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: singlink-vpn-app/core/go.mod

@@ -125,6 +125,11 @@ class AndroidVpnCore implements VpnCore {
   /// True between a successful [start] and the matching [stop] / drop:
   /// the foreground service is up and must be stopped with the session.
   bool _active = false;
+  int _generation = 0;
+  int? _owner;
+  Future<void>? _pendingStart;
+  Future<void>? _pendingStop;
+  bool _current(int generation) => generation == _generation;
 
   @override
   bool get available => location.found;
@@ -136,10 +141,7 @@ class AndroidVpnCore implements VpnCore {
     if (call.method == 'revoked') {
       // The system already tore the VPN down; stop relaying. The next status
       // poll then reports running:false and the UI shows msgDropped.
-      _active = false;
-      try {
-        await calls.tunStop();
-      } catch (_) {}
+      await stop();
     }
     return null;
   }
@@ -166,24 +168,34 @@ class AndroidVpnCore implements VpnCore {
     if (!available) {
       return OpResult(false, const CoreUnavailableException().toString());
     }
+    final generation = ++_generation;
+    final previousStart = _pendingStart;
+    final previousStop = _pendingStop;
+    final done = Completer<void>();
+    _pendingStart = done.future;
+    const cancelled = OpResult(false, 'Connection cancelled.');
     try {
-      // A session the UI no longer knows about would make TunStart fail
-      // with "already running"; end it first.
+      if (previousStart != null) await previousStart;
+      if (previousStop != null) await previousStop;
+      if (!_current(generation)) return cancelled;
       final s = CoreStatus.fromJson(await _json(calls.status));
+      if (!_current(generation)) return cancelled;
       if (s.running) {
         await calls.tunStop();
+        if (!_current(generation)) return cancelled;
         await _stopService();
       }
-
+      if (!_current(generation)) return cancelled;
       final granted = await channel.invokeMethod<bool>('prepare') ?? false;
+      if (!_current(generation)) return cancelled;
       if (!granted) return const OpResult(false, vpnPermissionDenied);
-
       final fd = await channel.invokeMethod<int>('establish', {'mtu': mtu});
+      if (!_current(generation)) return cancelled;
       if (fd == null || fd < 0) {
         await _stopService();
         return const OpResult(false, 'cannot establish the VPN interface');
       }
-
+      _owner = generation;
       final cfg = jsonEncode({
         'link': link,
         'mtu': mtu,
@@ -193,36 +205,53 @@ class AndroidVpnCore implements VpnCore {
       OpResult res;
       try {
         res = OpResult.fromJson(await _json(() => calls.tunStart(fd, cfg)));
-      } catch (e) {
-        res = OpResult(false, e.toString());
+      } catch (_) {
+        res = const OpResult(false, 'The native tunnel could not start.');
+      }
+      if (!_current(generation)) {
+        if (_owner == generation) {
+          await calls.tunStop();
+          await _stopService(closeFd: !res.ok);
+          _owner = null;
+        }
+        return cancelled;
       }
       if (!res.ok) {
-        // The core did not take the descriptor: Kotlin closes it, which
-        // removes the VPN interface, and stops the service.
         await _stopService(closeFd: true);
         return res;
       }
       _active = true;
       return res;
     } on PlatformException catch (e) {
-      await _stopService();
+      if (_current(generation)) await _stopService();
       return OpResult(false, e.message ?? e.code);
-    } on MissingPluginException catch (e) {
-      return OpResult(false, e.toString());
+    } on MissingPluginException {
+      return const OpResult(false, 'VPN service unavailable.');
+    } finally {
+      if (!done.isCompleted) done.complete();
     }
   }
 
   @override
   Future<OpResult> stop() async {
+    ++_generation;
     _active = false;
-    OpResult res;
+    final previous = _pendingStop;
+    final done = Completer<void>();
+    _pendingStop = done.future;
     try {
-      res = OpResult.fromJson(await _json(calls.tunStop));
-    } catch (e) {
-      res = OpResult(false, e.toString());
+      if (previous != null) await previous;
+      OpResult res;
+      try {
+        res = OpResult.fromJson(await _json(calls.tunStop));
+      } catch (_) {
+        res = const OpResult(false, 'The native tunnel could not stop.');
+      }
+      await _stopService();
+      return res;
+    } finally {
+      if (!done.isCompleted) done.complete();
     }
-    await _stopService();
-    return res;
   }
 
   @override

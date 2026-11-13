@@ -54,6 +54,11 @@ class SingLinkVpnService : VpnService() {
             stopSelf()
             return START_NOT_STICKY
         }
+        val generation = intent.getLongExtra("generation", -1)
+        if (!VpnBridge.isPending(generation)) {
+            if (!VpnBridge.hasSession()) stopSelf(startId)
+            return START_NOT_STICKY
+        }
         try {
             goForeground()
         } catch (e: Exception) {
@@ -63,7 +68,7 @@ class SingLinkVpnService : VpnService() {
         }
         try {
             val fd = establishTun(VpnBridge.pendingMtu)
-            VpnBridge.establishDone(fd)
+            VpnBridge.establishDone(fd, generation)
         } catch (e: Exception) {
             VpnBridge.establishFailed("establish", e.message ?: e.toString())
             shutdown()

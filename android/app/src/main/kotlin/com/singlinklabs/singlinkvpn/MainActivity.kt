@@ -25,6 +25,9 @@ class MainActivity : FlutterActivity() {
 
     /** `prepare` call waiting for the consent / permission dialogs. */
     private var pendingPrepare: MethodChannel.Result? = null
+    private var requestSequence = 0
+    private var currentVpnRequest: Int? = null
+    private var waitingNotification = false
 
     /**
      * One engine per process, kept across Activity instances: the Dart side
@@ -44,6 +47,9 @@ class MainActivity : FlutterActivity() {
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VpnBridge.CHANNEL)
         channel.setMethodCallHandler(::onMethodCall)
         VpnBridge.channel = channel
+        val credentialStore = CredentialStore(applicationContext)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.singlinklabs.singlinkvpn/secrets")
+            .setMethodCallHandler(credentialStore::handle)
     }
 
     override fun onDestroy() {
@@ -58,6 +64,8 @@ class MainActivity : FlutterActivity() {
             "prepare" -> prepare(result)
             "establish" -> establish(call.argument<Int>("mtu") ?: 1500, result)
             "stop" -> {
+                pendingPrepare?.success(false); pendingPrepare = null
+                currentVpnRequest = null; waitingNotification = false
                 VpnBridge.stop(call.argument<Boolean>("closeFd") ?: false)
                 result.success(null)
             }
@@ -70,6 +78,8 @@ class MainActivity : FlutterActivity() {
     private fun prepare(result: MethodChannel.Result) {
         pendingPrepare?.success(false)
         pendingPrepare = result
+        currentVpnRequest = null
+        waitingNotification = false
         // Android 13+: ask once for notifications so the "connected" notice is
         // visible; the VPN works either way.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -78,6 +88,7 @@ class MainActivity : FlutterActivity() {
             !getPreferences(MODE_PRIVATE).getBoolean("askedNotify", false)
         ) {
             getPreferences(MODE_PRIVATE).edit().putBoolean("askedNotify", true).apply()
+            waitingNotification = true
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFY)
             return
         }
@@ -96,7 +107,10 @@ class MainActivity : FlutterActivity() {
             return
         }
         try {
-            startActivityForResult(intent, REQ_VPN)
+            requestSequence = (requestSequence + 1) and 0x1fff
+            val request = 0x6000 + requestSequence
+            currentVpnRequest = request
+            startActivityForResult(intent, request)
         } catch (e: Exception) {
             finishPrepare(false)
         }
@@ -105,6 +119,7 @@ class MainActivity : FlutterActivity() {
     private fun finishPrepare(granted: Boolean) {
         pendingPrepare?.success(granted)
         pendingPrepare = null
+        currentVpnRequest = null; waitingNotification = false
     }
 
     override fun onRequestPermissionsResult(
@@ -113,22 +128,25 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_NOTIFY && pendingPrepare != null) askVpnConsent()
+        if (requestCode == REQ_NOTIFY && pendingPrepare != null && waitingNotification) {
+            waitingNotification = false; askVpnConsent()
+        }
     }
 
     @Deprecated("Activity result API; FlutterActivity still forwards it")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_VPN) finishPrepare(resultCode == RESULT_OK)
+        if (requestCode == currentVpnRequest) finishPrepare(resultCode == RESULT_OK)
     }
 
     // ---- TUN ---------------------------------------------------------------
 
     private fun establish(mtu: Int, result: MethodChannel.Result) {
-        VpnBridge.awaitEstablish(result, mtu)
+        val generation = VpnBridge.awaitEstablish(result, mtu)
         val intent = Intent(this, SingLinkVpnService::class.java)
             .setAction(SingLinkVpnService.ACTION_CONNECT)
+            .putExtra("generation", generation)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)

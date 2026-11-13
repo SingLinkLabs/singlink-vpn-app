@@ -1,10 +1,13 @@
+import 'security_warning.dart';
+
 // Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
 // SPDX-License-Identifier: Apache-2.0
 
 /// An imported `singlink://` server profile.
 ///
 /// The fields mirror the `profile` object returned by `SingLinkParseLink`; the
-/// raw [link] is kept because `SingLinkStart` takes the link, not the parsed profile.
+/// raw [link] exists only during import/migration. Committed profiles hold an
+/// opaque [secretRef]; native start receives the protected value when needed.
 class Profile {
   Profile({
     required this.id,
@@ -20,10 +23,36 @@ class Profile {
     this.rateKbps = 0,
     this.maxConns = 0,
     required this.addedAt,
+    this.secretRef = '',
+    this.acknowledgedWarnings = const [],
   });
 
   final String id;
   final String link;
+  final String secretRef;
+  final List<String> acknowledgedWarnings;
+
+  Profile withCredential({
+    required String reference,
+    String value = '',
+    List<String>? acceptedWarnings,
+  }) => Profile(
+    id: id,
+    link: value,
+    secretRef: reference,
+    name: name,
+    server: server,
+    transport: transport,
+    sni: sni,
+    subject: subject,
+    plan: plan,
+    expiresAt: expiresAt,
+    caps: caps,
+    rateKbps: rateKbps,
+    maxConns: maxConns,
+    addedAt: addedAt,
+    acknowledgedWarnings: acceptedWarnings ?? acknowledgedWarnings,
+  );
   final String name;
 
   /// `host:port`.
@@ -58,11 +87,13 @@ class Profile {
     Map<String, dynamic> json, {
     String? id,
     DateTime? addedAt,
+    String secretRef = '',
   }) {
     final now = DateTime.now();
     return Profile(
       id: id ?? now.microsecondsSinceEpoch.toRadixString(36),
       link: link.trim(),
+      secretRef: secretRef,
       name: _str(json['name']),
       server: _str(json['server']),
       transport: _str(json['transport']),
@@ -80,7 +111,7 @@ class Profile {
   /// Persistence format (superset of the core's profile object).
   Map<String, dynamic> toJson() => {
     'id': id,
-    'link': link,
+    'secretRef': secretRef,
     'name': name,
     'server': server,
     'transport': transport,
@@ -101,16 +132,18 @@ class Profile {
     json,
     id: _str(json['id']).isEmpty ? null : _str(json['id']),
     addedAt: _unix(json['addedAt']),
+    secretRef: _str(json['secretRef']),
   );
 }
 
 /// Result of `SingLinkParseLink`: `{"ok":true,"profile":{...}}` or
 /// `{"ok":false,"error":".."}`.
 class ParseLinkResult {
-  const ParseLinkResult._(this.profile, this.error);
+  const ParseLinkResult._(this.profile, this.error, [this.warnings = const []]);
 
   final Profile? profile;
   final String? error;
+  final List<SecurityWarning> warnings;
 
   bool get ok => profile != null;
 
@@ -120,7 +153,11 @@ class ParseLinkResult {
   factory ParseLinkResult.fromJson(String link, Map<String, dynamic> json) {
     final profile = json['profile'];
     if (json['ok'] == true && profile is Map<String, dynamic>) {
-      return ParseLinkResult._(Profile.fromCore(link, profile), null);
+      return ParseLinkResult._(
+        Profile.fromCore(link, profile),
+        null,
+        SecurityWarning.parse(json['warnings']),
+      );
     }
     final err = _str(json['error']);
     return ParseLinkResult._(null, err.isEmpty ? 'cannot parse link' : err);

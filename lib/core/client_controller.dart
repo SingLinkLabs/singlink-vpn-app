@@ -11,6 +11,8 @@ import 'package:flutter/foundation.dart';
 
 import '../models/core_status.dart';
 import '../models/profile.dart';
+import '../models/security_warning.dart';
+import 'secret_store.dart';
 import 'app_store.dart';
 import 'error_messages.dart';
 import 'singlink_service.dart';
@@ -82,6 +84,17 @@ class ClientController extends ChangeNotifier {
   int _sampleUp = 0;
   int _sampleDown = 0;
   bool _disposed = false;
+  bool _shutdown = false;
+  bool _storageBlocked = false;
+  int _generation = 0;
+  int? _nativeOwner;
+  Future<void>? _connectCompletion;
+  Future<void> _stateQueue = Future<void>.value();
+  Future<void> _proxyQueue = Future<void>.value();
+  Future<void>? _shutdownCompletion;
+
+  bool _current(int generation) =>
+      !_disposed && !_shutdown && generation == _generation;
 
   List<Profile> get profiles => List.unmodifiable(_state.profiles);
   int get port => _state.port;
@@ -128,7 +141,14 @@ class ClientController extends ChangeNotifier {
   String? get connectedId => isConnected ? _connectedId : null;
 
   Future<void> init() async {
-    _state = await store.load();
+    try {
+      _state = await store.load();
+    } catch (_) {
+      _storageBlocked = true;
+      error = const FriendlyError(
+        "Protected credentials are unavailable. Unlock this device and restart the app, or re-import your credentials.",
+      );
+    }
     loaded = true;
     final sp = systemProxy;
     if (sp != null) {
@@ -169,7 +189,15 @@ class ClientController extends ChangeNotifier {
   // ---- servers ------------------------------------------------------------
 
   /// Parses and stores [link]. Returns null on success.
-  Future<FriendlyError?> importLink(String link) async {
+  Future<FriendlyError?> importLink(
+    String link, {
+    Future<bool> Function(List<SecurityWarning>)? confirmWarnings,
+  }) async {
+    if (_storageBlocked || _shutdown || _disposed) {
+      return const FriendlyError(
+        "Protected credentials are unavailable. Unlock this device and restart the app.",
+      );
+    }
     final trimmed = link.trim();
     if (trimmed.isEmpty) {
       return const FriendlyError('Paste a server link first.');
@@ -179,21 +207,48 @@ class ClientController extends ChangeNotifier {
         'This is not a SingLinkVPN server link. It should start with $linkScheme',
       );
     }
-    for (final p in _state.profiles) {
-      if (p.link == trimmed) {
-        return const FriendlyError('This server is already in your list.');
-      }
-    }
     final res = await core.parseLink(trimmed);
     if (!res.ok) {
       log('Could not add server: ${res.error}', LogLevel.error);
       return friendlyLinkError(res.error ?? '');
     }
-    final profile = res.profile!;
-    _state.profiles.add(profile);
-    await _save();
-    log('Added server "${profile.displayName}"', LogLevel.success);
-    return null;
+    if (res.warnings.isNotEmpty) {
+      if (confirmWarnings == null || !await confirmWarnings(res.warnings)) {
+        return const FriendlyError(
+          'This advanced profile requires explicit security-warning confirmation.',
+        );
+      }
+    }
+    if (_shutdown || _disposed) {
+      return const FriendlyError('Import was cancelled.');
+    }
+    final profile = res.profile!.withCredential(
+      reference: '',
+      value: trimmed,
+      acceptedWarnings: res.warnings.map((w) => w.message).toList(),
+    );
+    return _withState(() async {
+      if (_shutdown || _disposed) {
+        return const FriendlyError('Import was cancelled.');
+      }
+      try {
+        for (final existing in _state.profiles) {
+          if ((await store.readCredential(existing)).link == trimmed) {
+            return const FriendlyError('This server is already in your list.');
+          }
+        }
+        final candidate = _state.copy()..profiles.add(profile);
+        if (!await _commitCandidate(candidate)) {
+          return error ?? const FriendlyError('Import was cancelled.');
+        }
+        log('Added server "${profile.displayName}"', LogLevel.success);
+        return null;
+      } catch (_) {
+        return const FriendlyError(
+          'Protected credentials are unavailable. Unlock the device and try again.',
+        );
+      }
+    });
   }
 
   Future<void> deleteProfile(String id) async {
@@ -202,13 +257,18 @@ class ClientController extends ChangeNotifier {
     if (conn != ConnState.disconnected && _connectedId == id) {
       await disconnect();
     }
-    final removed = _state.profiles.removeAt(idx);
-    if (_state.selectedId == id) {
-      _state.selectedId = null;
-      _state.autoSelect = true;
+    final removed = _byId(id);
+    if (removed == null) return;
+    if (!await _editState((next) {
+      next.profiles.removeWhere((p) => p.id == id);
+      if (next.selectedId == id) {
+        next.selectedId = null;
+        next.autoSelect = true;
+      }
+      if (next.lastUsedId == id) next.lastUsedId = null;
+    })) {
+      return;
     }
-    if (_state.lastUsedId == id) _state.lastUsedId = null;
-    await _save();
     log('Deleted server "${removed.displayName}"');
   }
 
@@ -220,11 +280,14 @@ class ClientController extends ChangeNotifier {
   Future<void> _choose({required bool auto, required String? id}) async {
     if (busy) return;
     final before = target?.id;
-    _state.autoSelect = auto;
-    if (!auto) _state.selectedId = id;
     final wasConnected = isConnected;
+    if (!await _editState((next) {
+      next.autoSelect = auto;
+      if (!auto) next.selectedId = id;
+    })) {
+      return;
+    }
     final after = (auto ? autoProfile : _byId(id))?.id;
-    await _save();
     // Like a VPN app: picking another location while connected switches.
     if (wasConnected && after != null && after != before) {
       await disconnect();
@@ -235,9 +298,9 @@ class ClientController extends ChangeNotifier {
   // ---- settings -----------------------------------------------------------
 
   Future<void> setSystemProxy(bool on) async {
-    _state.systemProxy = on;
-    await _save();
-    if (!isConnected) return;
+    final generation = _generation;
+    if (!await _editState((next) => next.systemProxy = on)) return;
+    if (!_current(generation) || !isConnected) return;
     if (on) {
       await _applySystemProxy();
     } else {
@@ -252,8 +315,9 @@ class ClientController extends ChangeNotifier {
     if (conn != ConnState.disconnected) return 'Disconnect first to change it';
     final err = validatePort('$port');
     if (err != null) return err;
-    _state.port = port;
-    await _save();
+    if (!await _editState((next) => next.port = port)) {
+      return 'Protected settings could not be saved';
+    }
     log('Local port set to $port');
     return null;
   }
@@ -271,7 +335,9 @@ class ClientController extends ChangeNotifier {
 
   Future<void> connect() async {
     final profile = target;
-    if (busy || conn == ConnState.connected) return;
+    if (_disposed || _shutdown || _storageBlocked || busy || isConnected) {
+      return;
+    }
     if (!core.available) {
       error = const FriendlyError(msgCoreMissing);
       _notify();
@@ -284,6 +350,10 @@ class ClientController extends ChangeNotifier {
       _notify();
       return;
     }
+    final generation = ++_generation;
+    final previous = _connectCompletion;
+    final completed = Completer<void>();
+    _connectCompletion = completed.future;
     conn = ConnState.connecting;
     _connectedId = profile.id;
     error = null;
@@ -291,92 +361,213 @@ class ClientController extends ChangeNotifier {
     exitIp = null;
     latencyMs = null;
     _notify();
-    log('Connecting to "${profile.displayName}"...');
-
-    final res = await core.start(link: profile.link, listen: _state.listen);
-    if (_disposed) return;
-    if (!res.ok) {
-      conn = ConnState.disconnected;
-      _connectedId = null;
-      error = friendlyError(res.error);
-      log('Connection failed: ${res.error}', LogLevel.error);
-      return;
+    try {
+      // A newer start never overtakes an obsolete start's scoped cleanup.
+      if (previous != null) await previous;
+      if (!_current(generation)) return;
+      final credential = await store.readCredential(profile);
+      if (!_current(generation)) return;
+      final parsed = await core.parseLink(credential.link);
+      if (!_current(generation)) return;
+      if (!parsed.ok) {
+        error = friendlyLinkError(parsed.error ?? '');
+        _resetDisconnected();
+        return;
+      }
+      final warnings = parsed.warnings.map((w) => w.message).toList();
+      if (!listEquals(warnings, credential.acknowledgedWarnings)) {
+        error = const FriendlyError(
+          'Security warnings changed. Re-import this profile and review them before connecting.',
+        );
+        _resetDisconnected();
+        return;
+      }
+      log('Connecting to "${profile.displayName}"...');
+      _nativeOwner = generation;
+      final native = core;
+      final res = native is ProtectedProfileCore
+          ? await (native as ProtectedProfileCore).startProtected(
+              reference: profile.secretRef,
+              listen: _state.listen,
+            )
+          : await native.start(link: credential.link, listen: _state.listen);
+      if (!_current(generation)) {
+        await _cleanupObsolete(generation);
+        return;
+      }
+      if (!res.ok) {
+        conn = ConnState.disconnected;
+        _connectedId = null;
+        error = friendlyError(res.error);
+        log('Connection failed', LogLevel.error);
+        return;
+      }
+      if (_state.systemProxy) await _applySystemProxy();
+      if (!_current(generation)) {
+        await _cleanupObsolete(generation);
+        return;
+      }
+      conn = ConnState.connected;
+      connectedAt = clock();
+      status = CoreStatus.idle;
+      upRate = downRate = 0;
+      _sampleAt = null;
+      await _editState((next) => next.lastUsedId = profile.id);
+      if (!_current(generation)) {
+        await _cleanupObsolete(generation);
+        return;
+      }
+      log(
+        core.usesLocalProxy
+            ? 'Connected to "${profile.displayName}" (local proxy ${_state.listen})'
+            : 'Connected to "${profile.displayName}" (device-wide VPN)',
+        LogLevel.success,
+      );
+      _startPolling();
+      unawaited(_fetchExitIp());
+      unawaited(measureLatency());
+    } on SecretStoreException {
+      if (_current(generation)) {
+        error = const FriendlyError(
+          'Protected credentials are missing or locked. Unlock the device or re-import the profile.',
+        );
+        _resetDisconnected();
+      }
+    } catch (_) {
+      if (_current(generation)) {
+        error = const FriendlyError(
+          'The connection could not be started safely.',
+        );
+        _resetDisconnected();
+      }
+      await _cleanupObsolete(generation);
+    } finally {
+      if (!completed.isCompleted) completed.complete();
+      _notify();
     }
+  }
 
-    if (_state.systemProxy) await _applySystemProxy();
-    if (_disposed) return;
-
-    conn = ConnState.connected;
-    connectedAt = clock();
-    status = CoreStatus.idle;
-    upRate = downRate = 0;
-    _sampleAt = null;
-    _state.lastUsedId = profile.id;
-    await _save();
-    log(
-      core.usesLocalProxy
-          ? 'Connected to "${profile.displayName}" (local proxy ${_state.listen})'
-          : 'Connected to "${profile.displayName}" (device-wide VPN)',
-      LogLevel.success,
-    );
-    _startPolling();
-    unawaited(_fetchExitIp());
-    unawaited(measureLatency());
+  Future<void> _cleanupObsolete(int generation) async {
+    // New starts wait for this operation to finish. Never globally stop a
+    // different generation that has already acquired the core.
+    if (_nativeOwner != generation) return;
+    await core.stop();
+    if (_nativeOwner == generation) {
+      await _restoreSystemProxy();
+      _nativeOwner = null;
+    }
   }
 
   Future<void> disconnect() async {
-    if (busy || conn == ConnState.disconnected) return;
+    if (_disposed ||
+        conn == ConnState.disconnecting ||
+        conn == ConnState.disconnected) {
+      return;
+    }
+    final generation = ++_generation;
     conn = ConnState.disconnecting;
     _stopPolling();
     _notify();
-    // Restore first so traffic never points at a closed port.
     await _restoreSystemProxy();
     final res = await core.stop();
-    if (_disposed) return;
-    if (!res.ok) log('Error while stopping: ${res.error}', LogLevel.error);
+    if (_disposed || generation != _generation) return;
+    if (!res.ok) log('Error while stopping the connection', LogLevel.error);
     _resetDisconnected();
     log('Disconnected');
   }
 
-  /// Called when the app quits: undo the system proxy and stop the core.
-  Future<void> shutdown() async {
-    _stopPolling();
-    await _restoreSystemProxy();
-    if (conn != ConnState.disconnected) {
-      await core.stop();
-      _resetDisconnected();
-    }
+  /// Terminal for this controller. Completion is a barrier: an older start or
+  /// proxy operation cannot create a new side effect after this returns.
+  Future<void> shutdown() {
+    final pending = _shutdownCompletion;
+    if (pending != null) return pending;
+    final guarded = _shutdownSafely().catchError((
+      Object error,
+      StackTrace stack,
+    ) {
+      _shutdownCompletion = null; // A cancelled quit may retry cleanup safely.
+      Error.throwWithStackTrace(error, stack);
+    });
+    _shutdownCompletion = guarded;
+    return guarded;
   }
 
-  Future<void> _applySystemProxy() async {
+  Future<void> _shutdownSafely() async {
+    _shutdown = true;
+    ++_generation;
+    _stopPolling();
+    // Native stop cancels pending consent/start before waiting for its result.
+    try {
+      await core.stop();
+    } catch (_) {
+      /* Final stop below verifies cleanup. */
+    }
+    final pending = _connectCompletion;
+    if (pending != null) await pending;
+    await _restoreSystemProxy(requireSuccess: true);
+    final stopped = await core.stop();
+    if (!stopped.ok) throw StateError('Connection cleanup could not complete');
+    _nativeOwner = null;
+    _resetDisconnected();
+  }
+
+  Future<void> _proxyOperation(Future<void> Function() action) {
+    final done = Completer<void>();
+    _proxyQueue = _proxyQueue.then((_) async {
+      try {
+        await action();
+        done.complete();
+      } catch (error, stack) {
+        done.completeError(error, stack);
+      }
+    });
+    return done.future;
+  }
+
+  Future<void> _applySystemProxy() {
+    final generation = _generation;
+    final port = _state.port;
+    return _proxyOperation(() async {
+      final sp = systemProxy;
+      if (sp == null || !_current(generation)) return;
+      final r = await sp.enable(port);
+      if (!_current(generation)) {
+        // The enable was already in flight when stop invalidated this owner.
+        await sp.restore();
+        return;
+      }
+      if (r.ok) {
+        proxyWarning = null;
+        log('System proxy set (${r.changed.join(', ')})', LogLevel.success);
+      } else {
+        proxyWarning = systemProxyFailedMessage(port);
+        log('Could not set the system proxy', LogLevel.error);
+      }
+    });
+  }
+
+  Future<void> _restoreSystemProxy({
+    bool requireSuccess = false,
+  }) => _proxyOperation(() async {
     final sp = systemProxy;
     if (sp == null) return;
-    final r = await sp.enable(_state.port);
-    if (r.ok) {
-      proxyWarning = null;
-      log('System proxy set (${r.changed.join(', ')})', LogLevel.success);
-    } else {
-      proxyWarning = systemProxyFailedMessage(_state.port);
-      log('Could not set the system proxy: ${r.failed}', LogLevel.error);
-    }
-  }
-
-  Future<void> _restoreSystemProxy() async {
-    final sp = systemProxy;
-    if (sp == null || !sp.isApplied) return;
+    // Queue even while isApplied is still false: an in-flight enable may not
+    // have captured its previous settings yet.
     final r = await sp.restore();
-    if (r.ok) {
+    if (r.changed.isNotEmpty && r.ok) {
       log('System proxy settings restored');
-    } else {
-      log('Could not restore the system proxy: ${r.failed}', LogLevel.error);
+    } else if (!r.ok) {
+      log('Could not restore the system proxy', LogLevel.error);
+      if (requireSuccess) throw StateError('Proxy cleanup could not complete');
     }
-  }
+  });
 
   Future<void> _fetchExitIp() async {
+    final generation = _generation;
     exitIpLoading = true;
     _notify();
     final r = await core.exitIP(timeoutMs: exitIpTimeoutMs);
-    if (_disposed) return;
+    if (!_current(generation)) return;
     exitIpLoading = false;
     if (!isConnected) return _notify();
     exitIp = r.ok ? r.ip : null;
@@ -387,11 +578,12 @@ class ClientController extends ChangeNotifier {
   /// Measures the connected server with SingLinkProbe. Other servers have no
   /// figure: the core can only probe through the active tunnel.
   Future<void> measureLatency() async {
+    final generation = _generation;
     if (measuring || !isConnected) return;
     measuring = true;
     _notify();
     final r = await core.probe(probeUrl, timeoutMs: probeTimeoutMs);
-    if (_disposed) return;
+    if (!_current(generation)) return;
     measuring = false;
     if (isConnected) latencyMs = r.ok ? r.latencyMs : null;
     if (!r.ok) log('Latency test failed: ${r.error}', LogLevel.error);
@@ -407,6 +599,7 @@ class ClientController extends ChangeNotifier {
     exitIp = null;
     exitIpLoading = false;
     latencyMs = null;
+    measuring = false;
     proxyWarning = null;
     status = CoreStatus.idle;
     _notify();
@@ -424,11 +617,14 @@ class ClientController extends ChangeNotifier {
   }
 
   Future<void> _pollOnce() async {
+    final generation = _generation;
     if (_pollInFlight || conn != ConnState.connected) return;
     _pollInFlight = true;
     try {
       final s = await core.status();
-      if (_disposed || conn != ConnState.connected) return;
+      if (!_current(generation) || _disposed || conn != ConnState.connected) {
+        return;
+      }
       final now = clock();
       if (_sampleAt != null) {
         final dt = now.difference(_sampleAt!).inMicroseconds / 1e6;
@@ -447,6 +643,7 @@ class ClientController extends ChangeNotifier {
       if (!s.running) {
         _stopPolling();
         await _restoreSystemProxy();
+        if (!_current(generation) || conn != ConnState.connected) return;
         final err = s.lastError.isEmpty
             ? const FriendlyError(msgDropped)
             : friendlyError(s.lastError);
@@ -465,15 +662,50 @@ class ClientController extends ChangeNotifier {
     }
   }
 
-  Future<void> _save() async {
+  Future<T> _withState<T>(Future<T> Function() operation) {
+    final result = Completer<T>();
+    _stateQueue = _stateQueue.then((_) async {
+      try {
+        result.complete(await operation());
+      } catch (e, st) {
+        result.completeError(e, st);
+      }
+    });
+    return result.future;
+  }
+
+  Future<bool> _editState(void Function(AppState) edit) => _withState(() async {
+    if (_disposed || _shutdown || _storageBlocked) return false;
+    final next = _state.copy();
+    edit(next);
+    return _commitCandidate(next);
+  });
+
+  Future<bool> _commitCandidate(AppState candidate) async {
     try {
-      await store.save(_state);
-    } catch (e) {
-      logs.add(
-        LogEntry(clock(), 'Could not save settings: $e', LogLevel.error),
+      final committed = await store.commit(candidate);
+      if (!_disposed && !_shutdown) _state = committed;
+      if (store.cleanupPending) {
+        error = const FriendlyError(
+          'Profile changes were saved. Protected credential cleanup is pending; unlock and restart the app.',
+        );
+      }
+      _notify();
+      return !_disposed && !_shutdown;
+    } catch (_) {
+      error = const FriendlyError(
+        'Protected settings could not be saved. Unlock the device and try again.',
       );
+      logs.add(
+        LogEntry(
+          clock(),
+          'Protected settings could not be saved',
+          LogLevel.error,
+        ),
+      );
+      _notify();
+      return false;
     }
-    _notify();
   }
 
   void _notify() {
@@ -483,7 +715,14 @@ class ClientController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _shutdown = true;
+    ++_generation;
     _stopPolling();
+    unawaited(
+      shutdown().catchError((Object _) {
+        /* Best effort after disposal. */
+      }),
+    );
     super.dispose();
   }
 }

@@ -10,5 +10,9 @@
 	<array>
 		<string>group.com.singlinklabs.singlinkvpn</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.singlinklabs.singlinkvpn.credentials</string>
+	</array>
 </dict>
 </plist>

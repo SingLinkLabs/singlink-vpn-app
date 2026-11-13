@@ -7,7 +7,7 @@
 // NETunnelProviderManager.
 //
 // Every method answers a JSON string in the core's format:
-//   start {link, server}   -> {"ok":true} | {"ok":false,"error":".."}
+//   start {reference}   -> {"ok":true} | {"ok":false,"error":".."}
 //   stop                   -> {"ok":true}
 //   status                 -> SingLinkStatus JSON (+ "state"); running=false
 //                             once iOS reports the VPN as disconnected
@@ -36,6 +36,8 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
   /// Set by stop(): the next disconnect is not reported as an error.
   private var userStopped = false
   private var startedAt = Date.distantPast
+  private var generation: UInt64 = 0
+  private var migratingProviderConfiguration = true
 
   init(channel: FlutterMethodChannel) {
     self.channel = channel
@@ -49,6 +51,7 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
     let channel = FlutterMethodChannel(name: channelName, binaryMessenger: registrar.messenger())
     let instance = SingLinkVpnPlugin(channel: channel)
     registrar.addMethodCallDelegate(instance, channel: channel)
+    instance.migrateLegacyProviderConfiguration()
   }
 
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -57,7 +60,7 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
     let timeoutMs = args["timeoutMs"] as? Int ?? 8000
     switch call.method {
     case "start":
-      start(link: args["link"] as? String ?? "", server: args["server"] as? String ?? "", reply)
+      start(reference: args["reference"] as? String ?? "", reply)
     case "stop":
       stop(reply)
     case "status":
@@ -74,23 +77,33 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
 
   // MARK: - Commands
 
-  private func start(link: String, server: String, _ reply: @escaping (String) -> Void) {
+  private func start(reference: String, _ reply: @escaping (String) -> Void) {
+    guard !migratingProviderConfiguration else {
+      return reply(Self.json(["ok": false, "error": "protected credential migration is still running; retry shortly"]))
+    }
+    generation &+= 1
+    let operation = generation
     #if targetEnvironment(simulator)
     reply(Self.json([
       "ok": false,
       "error": "vpn unsupported: the iOS Simulator cannot run a Network Extension packet tunnel",
     ]))
     #else
-    guard link.hasPrefix("singlink://") else {
-      return reply(Self.json(["ok": false, "error": "malformed link"]))
-    }
+    guard CredentialKeychain.valid(reference),
+      let stored = try? CredentialKeychain.read(reference),
+      let bytes = stored.data(using: .utf8),
+      let record = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+      record["version"] as? Int == 1,
+      let link = record["link"] as? String, link.hasPrefix("singlink://")
+    else { return reply(Self.json(["ok": false, "error": "protected credentials unavailable"])) }
     loadManager { existing, error in
+      guard operation == self.generation else { return reply(Self.cancelled) }
       if let error { return reply(Self.fail(error)) }
       let m = existing ?? NETunnelProviderManager()
       let proto = NETunnelProviderProtocol()
       proto.providerBundleIdentifier = Self.tunnelBundleId
-      proto.serverAddress = server.isEmpty ? "SingLink" : server
-      proto.providerConfiguration = ["link": link]
+      proto.serverAddress = "SingLinkVPN"
+      proto.providerConfiguration = ["secretRef": reference]
       proto.disconnectOnSleep = false
       m.protocolConfiguration = proto
       m.localizedDescription = "SingLinkVPN"
@@ -98,20 +111,26 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
       // The first save shows iOS's '"SingLinkVPN" Would Like to Add VPN
       // Configurations' prompt.
       m.saveToPreferences { error in
+        guard operation == self.generation else { return reply(Self.cancelled) }
         if let error { return reply(Self.fail(error)) }
         // Reload, or the first start after a save fails with
         // "configuration is stale".
         m.loadFromPreferences { error in
+          guard operation == self.generation else { return reply(Self.cancelled) }
           if let error { return reply(Self.fail(error)) }
           self.adopt(m)
-          self.stopIfActive(m) { self.startTunnel(m, reply) }
+          self.stopIfActive(m) {
+            guard operation == self.generation else { return reply(Self.cancelled) }
+            self.startTunnel(m, operation: operation, reply)
+          }
         }
       }
     }
     #endif
   }
 
-  private func startTunnel(_ m: NETunnelProviderManager, _ reply: @escaping (String) -> Void) {
+  private func startTunnel(_ m: NETunnelProviderManager, operation: UInt64, _ reply: @escaping (String) -> Void) {
+    guard operation == generation else { return reply(Self.cancelled) }
     userStopped = false
     startedAt = Date()
     Self.sharedDefaults?.removeObject(forKey: "lastError")
@@ -122,6 +141,7 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
     }
     var sawConnecting = false
     waitForStatus(m.connection, timeout: Self.startTimeout, until: { status, elapsed in
+      if operation != self.generation { return true }
       switch status {
       case .connecting, .reasserting:
         sawConnecting = true
@@ -135,6 +155,7 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
         return false
       }
     }) { status in
+      guard operation == self.generation else { return reply(Self.cancelled) }
       switch status {
       case .connected?:
         reply(Self.json(["ok": true]))
@@ -163,7 +184,10 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
   }
 
   private func stop(_ reply: @escaping (String) -> Void) {
+    generation &+= 1
+    let operation = generation
     loadManager { m, _ in
+      guard operation == self.generation else { return reply(Self.cancelled) }
       guard let m else { return reply(Self.json(["ok": true])) }
       self.stopIfActive(m) { reply(Self.json(["ok": true])) }
     }
@@ -209,6 +233,35 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
       }
     }
   }
+
+  /// Upgrade the app-owned legacy provider dictionary without copying its
+  /// credential to any ordinary file/log. A locked Keychain leaves the old
+  /// configuration untouched; the extension refuses legacy plaintext fallback.
+  private func migrateLegacyProviderConfiguration() {
+    let operation = generation
+    loadManager { manager, _ in
+      guard operation == self.generation,
+        let manager, let proto = manager.protocolConfiguration as? NETunnelProviderProtocol,
+        let legacy = proto.providerConfiguration?["link"] as? String else {
+          self.migratingProviderConfiguration = false; return
+        }
+      do {
+        let reference = try CredentialKeychain.newReference()
+        let record = Self.json(["version": 1, "link": legacy, "acknowledgedWarnings": [String]()])
+        try CredentialKeychain.write(reference, value: record)
+        guard try CredentialKeychain.read(reference) == record,
+          operation == self.generation else {
+          self.migratingProviderConfiguration = false; return
+        }
+        proto.providerConfiguration = ["secretRef": reference]
+        proto.serverAddress = "SingLinkVPN"
+        manager.protocolConfiguration = proto
+        manager.saveToPreferences { _ in self.migratingProviderConfiguration = false }
+      } catch { self.migratingProviderConfiguration = false /* User must unlock/re-import; never downgrade. */ }
+    }
+  }
+
+  private static let cancelled = #"{"ok":false,"error":"connection cancelled"}"#
 
   // MARK: - Manager
 

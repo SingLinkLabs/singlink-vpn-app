@@ -66,5 +66,7 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>CredentialAccessGroup</key>
+	<string>$(AppIdentifierPrefix)com.singlinklabs.singlinkvpn.credentials</string>
 </dict>
 </plist>

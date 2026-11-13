@@ -36,6 +36,14 @@ abstract class VpnCore {
   Future<ExitIpResult> exitIP({int timeoutMs = 8000});
 }
 
+/// Platforms whose OS configuration must only receive an opaque secret ref.
+abstract interface class ProtectedProfileCore {
+  Future<OpResult> startProtected({
+    required String reference,
+    required String listen,
+  });
+}
+
 /// Thrown when a call is made while the core library is not loaded.
 class CoreUnavailableException implements Exception {
   const CoreUnavailableException();
@@ -147,8 +155,8 @@ Map<String, dynamic> decodeCoreJson(String raw) {
   try {
     final v = jsonDecode(raw);
     if (v is Map<String, dynamic>) return v;
-    return {'ok': false, 'error': 'malformed core reply: $raw'};
+    return {'ok': false, 'error': 'malformed core reply'};
   } on FormatException {
-    return {'ok': false, 'error': 'core reply is not JSON: $raw'};
+    return {'ok': false, 'error': 'core reply is not JSON'};
   }
 }

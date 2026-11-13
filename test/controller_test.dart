@@ -1,10 +1,10 @@
 // Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
 // SPDX-License-Identifier: Apache-2.0
 
+import 'support/secret_store.dart';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:singlink_vpn/core/app_store.dart';
 import 'package:singlink_vpn/core/client_controller.dart';
 import 'package:singlink_vpn/core/error_messages.dart';
 import 'package:singlink_vpn/core/system_proxy.dart';
@@ -23,7 +23,7 @@ void main() {
     runner = FakeRunner(services: 'Wi-Fi\n');
     c = ClientController(
       core: core,
-      store: AppStore(File('${dir.path}/state.json')),
+      store: TestAppStore(File('${dir.path}/state.json')),
       systemProxy: SystemProxyManager(runner: runner),
     );
     await c.init();
@@ -128,7 +128,7 @@ void main() {
     await c.connect();
     core.calls.clear();
     await c.chooseServer(c.profiles[1].id);
-    expect(core.calls, ['stop', 'start 127.0.0.1:1080']);
+    expect(core.calls, ['stop', 'parse', 'start 127.0.0.1:1080']);
     expect(c.isConnected, isTrue);
     expect(c.target!.name, 'Japan 02');
     await c.disconnect();

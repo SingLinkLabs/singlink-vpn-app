@@ -87,12 +87,27 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     COMPONENT Runtime)
 endif()
 
+# The app revision binds its sibling source before any native bundle is used.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/protocol_provenance.py" verify
+  RESULT_VARIABLE SINGLINK_PIN_RESULT)
+if(NOT SINGLINK_PIN_RESULT EQUAL 0)
+  message(FATAL_ERROR "Unreviewed protocol dependency")
+endif()
+
 # SingLink protocol core (loaded with dart:ffi from next to the .exe).
 # Build it first with `make -C core windows` (see core/Makefile). OPTIONAL:
 # without it the app still starts and shows the missing-core banner; set
 # SINGLINK_REQUIRE_CORE=1 in the environment to make that a configure error.
 set(SINGLINK_CORE_DLL "${CMAKE_CURRENT_SOURCE_DIR}/../core/build/windows/singlink.dll"
   CACHE FILEPATH "singlink.dll to bundle next to the executable")
+if(EXISTS "${SINGLINK_CORE_DLL}")
+  execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/protocol_provenance.py" check-artifact "${SINGLINK_CORE_DLL}"
+    RESULT_VARIABLE SINGLINK_ARTIFACT_RESULT)
+  if(NOT SINGLINK_ARTIFACT_RESULT EQUAL 0)
+    message(FATAL_ERROR "Native core artifact has stale or missing provenance")
+  endif()
+endif()
 if(NOT EXISTS "${SINGLINK_CORE_DLL}")
   if("$ENV{SINGLINK_REQUIRE_CORE}" STREQUAL "1")
     message(FATAL_ERROR "SingLink core not found: ${SINGLINK_CORE_DLL}")

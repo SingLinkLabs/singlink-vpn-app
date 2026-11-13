@@ -174,12 +174,7 @@ func SingLinkTunStart(fd C.int, config *C.char) (res *C.char) {
 		// a newer session started after this one).
 		go func() {
 			<-t.Done()
-			tunMu.Lock()
-			mine := curTun == t
-			tunMu.Unlock()
-			if mine {
-				eng.Stop()
-			}
+			eng.StopClient(c)
 		}()
 		return func() {
 			tunMu.Lock()

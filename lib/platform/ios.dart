@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 
 import '../core/singlink_bindings.dart';
 import '../core/singlink_service.dart';
+import '../core/secret_store.dart';
 import '../models/core_status.dart';
 import '../models/profile.dart';
 
@@ -28,7 +29,7 @@ const iosVpnChannel = MethodChannel('com.singlinklabs.singlinkvpn/vpn');
 
 VpnCore createIosCore() => IosTunnelCore(ffi: SingLinkService.locate());
 
-class IosTunnelCore implements VpnCore {
+class IosTunnelCore implements VpnCore, ProtectedProfileCore {
   /// [ffi] answers version / parseLink (the core linked into the app).
   IosTunnelCore({required VpnCore ffi, MethodChannel channel = iosVpnChannel})
     : _ffi = ffi,
@@ -42,6 +43,7 @@ class IosTunnelCore implements VpnCore {
 
   /// Last NEVPNStatus reported by iOS ("connected", "disconnected", ...).
   String? vpnState;
+  int _generation = 0;
 
   /// NEVPNStatus changes, also when the VPN is switched in iOS Settings.
   Stream<String> get vpnStates => _states.stream;
@@ -63,21 +65,34 @@ class IosTunnelCore implements VpnCore {
 
   /// [listen] is ignored: there is no local proxy port on iOS.
   @override
-  Future<OpResult> start({required String link, required String listen}) async {
-    var server = '';
-    try {
-      final parsed = await _ffi.parseLink(link);
-      if (parsed.ok) server = parsed.profile?.server ?? '';
-    } catch (_) {
-      // The extension parses the link again and reports a bad one.
+  Future<OpResult> start({
+    required String link,
+    required String listen,
+  }) async =>
+      const OpResult(false, 'A protected credential reference is required.');
+
+  @override
+  Future<OpResult> startProtected({
+    required String reference,
+    required String listen,
+  }) async {
+    if (!isSecretReference(reference)) {
+      return const OpResult(false, 'Protected credentials are missing.');
     }
-    return OpResult.fromJson(
-      await _call('start', {'link': link, 'server': server}),
+    final generation = ++_generation;
+    final reply = OpResult.fromJson(
+      await _call('start', {'reference': reference}),
     );
+    return generation == _generation
+        ? reply
+        : const OpResult(false, 'Connection cancelled.');
   }
 
   @override
-  Future<OpResult> stop() async => OpResult.fromJson(await _call('stop'));
+  Future<OpResult> stop() async {
+    ++_generation;
+    return OpResult.fromJson(await _call('stop'));
+  }
 
   /// `running` follows iOS's VPN status: false once the tunnel is gone,
   /// with the reason in `lastError` unless the app stopped it.

@@ -12,6 +12,7 @@ class MainFlutterWindow: NSWindow {
     self.center()
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    SecretStorePlugin.register(with: flutterViewController.registrar(forPlugin: "SecretStorePlugin"))
 
     super.awakeFromNib()
   }

@@ -8,7 +8,7 @@
 // (SingLinkTunStart in Singlink.xcframework, built by `make -C core ios`).
 //
 // The app (ios/Runner/SingLinkVpnPlugin.swift) configures the tunnel with
-// providerConfiguration = ["link": "singlink://..."] and talks to it with
+// providerConfiguration = ["secretRef": "opaque reference"] and talks to it with
 // sendProviderMessage: {"cmd":"status"|"probe"|"exitip", ...} -> core JSON.
 
 import Foundation
@@ -26,26 +26,54 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
   private let coreQueue = DispatchQueue(label: "com.singlinklabs.singlinkvpn.tunnel.core")
   private var watchdog: DispatchSourceTimer?
   private var stopping = false
+  private let lifecycleLock = NSLock()
+  private var generation: UInt64 = 0
+
+  private func beginSession(stopping: Bool) -> UInt64 {
+    lifecycleLock.lock(); defer { lifecycleLock.unlock() }
+    generation &+= 1
+    self.stopping = stopping
+    return generation
+  }
+  private func isCurrent(_ operation: UInt64) -> Bool {
+    lifecycleLock.lock(); defer { lifecycleLock.unlock() }
+    return !stopping && generation == operation
+  }
+  private func ownsGeneration(_ operation: UInt64) -> Bool {
+    lifecycleLock.lock(); defer { lifecycleLock.unlock() }
+    return generation == operation
+  }
 
   override func startTunnel(
     options: [String: NSObject]?,
     completionHandler: @escaping (Error?) -> Void
   ) {
     SharedState.setLastError(nil)
-    stopping = false
+    let operation = beginSession(stopping: false)
     let fail = { (message: String) in
       os_log("start failed: %{public}@", log: log, type: .error, message)
       SharedState.setLastError(message)
       completionHandler(TunnelError(message))
     }
 
-    guard
-      let proto = protocolConfiguration as? NETunnelProviderProtocol,
-      let link = proto.providerConfiguration?["link"] as? String,
-      !link.isEmpty
-    else {
-      return fail("missing link in the VPN configuration")
-    }
+    guard let proto = protocolConfiguration as? NETunnelProviderProtocol,
+      let reference = proto.providerConfiguration?["secretRef"] as? String,
+      let stored = try? CredentialKeychain.read(reference),
+      let bytes = stored.data(using: .utf8),
+      let credential = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+      credential["version"] as? Int == 1,
+      let link = credential["link"] as? String, link.hasPrefix("singlink://"),
+      let acknowledged = credential["acknowledgedWarnings"] as? [String]
+    else { return fail("protected credentials unavailable; open the app to migrate or re-import") }
+    // OS Settings can start this extension without the Dart UI. Apply the same
+    // consent check against the exact protected credential here as well.
+    let parsed = Core.decode(Core.withCString(link) { Core.take(SingLinkParseLink($0)) })
+    let warnings: [String]
+    if parsed["warnings"] == nil || parsed["warnings"] is NSNull { warnings = [] }
+    else if let known = parsed["warnings"] as? [String] { warnings = known }
+    else { return fail("unknown profile security warning") }
+    guard parsed["ok"] as? Bool == true, warnings == acknowledged
+    else { return fail("profile security warnings require review in the app") }
 
     _ = Core.setMemoryLimit(goMemoryLimit)
 
@@ -53,6 +81,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     let remote = Self.resolve(host: host) ?? "127.0.0.1"
     setTunnelNetworkSettings(Self.networkSettings(remote: remote)) { [weak self] error in
       guard let self else { return }
+      guard self.isCurrent(operation) else {
+        return completionHandler(TunnelError("connection cancelled"))
+      }
       if let error {
         return fail("cannot apply tunnel settings: \(error.localizedDescription)")
       }
@@ -60,15 +91,24 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         return fail("cannot find the utun file descriptor")
       }
       self.coreQueue.async {
+        guard self.isCurrent(operation) else {
+          return completionHandler(TunnelError("connection cancelled"))
+        }
         let reply = Core.tunStart(fd: fd, config: [
           "link": link,
           "mtu": 1500,
           "dns": "1.1.1.1:53",
           "appleHeader": true,
         ])
+        guard self.isCurrent(operation) else {
+          // New core starts use this same queue, so this cleanup cannot stop a
+          // later session which has not acquired the core yet.
+          _ = Core.tunStop()
+          return completionHandler(TunnelError("connection cancelled"))
+        }
         if reply["ok"] as? Bool == true {
           os_log("tunnel started on fd %d", log: log, type: .info, fd)
-          self.startWatchdog()
+          self.startWatchdog(operation: operation)
           completionHandler(nil)
         } else {
           fail(reply["error"] as? String ?? "core failed to start")
@@ -82,11 +122,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler: @escaping () -> Void
   ) {
     os_log("stop, reason %ld", log: log, type: .info, reason.rawValue)
-    stopping = true
+    let operation = beginSession(stopping: true)
     watchdog?.cancel()
     watchdog = nil
     coreQueue.async {
-      _ = Core.tunStop()
+      if self.ownsGeneration(operation) { _ = Core.tunStop() }
       completionHandler()
     }
   }
@@ -127,11 +167,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
   /// If the core stops by itself (node gone, token expired, utun closed),
   /// tear the VPN down so iOS does not show a connected VPN that relays
   /// nothing. The app reads the reason from the app group.
-  private func startWatchdog() {
+  private func startWatchdog(operation: UInt64) {
     let timer = DispatchSource.makeTimerSource(queue: coreQueue)
     timer.schedule(deadline: .now() + 5, repeating: 5)
     timer.setEventHandler { [weak self] in
-      guard let self, !self.stopping else { return }
+      guard let self, self.isCurrent(operation) else { return }
       let status = Core.decode(Core.statusRaw())
       if status["running"] as? Bool == false {
         let reason = (status["lastError"] as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -239,7 +279,7 @@ enum Core {
   static func decode(_ raw: String) -> [String: Any] {
     guard let data = raw.data(using: .utf8),
           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else { return ["ok": false, "error": "malformed core reply: \(raw)"] }
+    else { return ["ok": false, "error": "malformed core reply"] }
     return obj
   }
 

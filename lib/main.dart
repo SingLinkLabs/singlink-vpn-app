@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import 'core/app_store.dart';
 import 'core/client_controller.dart';
+import 'core/error_messages.dart';
 import 'legal.dart';
 import 'platform/platform_core.dart';
 import 'ui/home_page.dart';
@@ -23,6 +24,24 @@ Future<void> main() async {
     systemProxy: createSystemProxy(appSupportDir()),
   )..init();
   runApp(SingLinkVpnApp(controller: controller));
+}
+
+/// A normal quit must wait for the safety barrier. A failed cleanup leaves
+/// the app open so the user can retry instead of claiming settings restored.
+Future<AppExitResponse> requestAppExit(ClientController controller) async {
+  try {
+    await controller.shutdown();
+    return AppExitResponse.exit;
+  } catch (_) {
+    controller.error = const FriendlyError(
+      'The app could not safely finish connection cleanup. Keep it open and try quitting again.',
+    );
+    controller.log(
+      'Quit cancelled: connection cleanup needs another attempt',
+      LogLevel.error,
+    );
+    return AppExitResponse.cancel;
+  }
 }
 
 /// The UI is English only.
@@ -51,14 +70,7 @@ class _SingLinkVpnAppState extends State<SingLinkVpnApp> {
     _lifecycle = AppLifecycleListener(onExitRequested: _onExit);
   }
 
-  Future<AppExitResponse> _onExit() async {
-    try {
-      await widget.controller.shutdown().timeout(const Duration(seconds: 8));
-    } catch (_) {
-      // Never block quitting; the journal restores on next launch.
-    }
-    return AppExitResponse.exit;
-  }
+  Future<AppExitResponse> _onExit() => requestAppExit(widget.controller);
 
   @override
   void dispose() {

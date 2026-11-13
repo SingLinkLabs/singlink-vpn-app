@@ -359,7 +359,32 @@ class _AddServerDialogState extends State<_AddServerDialog> {
       _working = true;
       _error = null;
     });
-    final err = await widget.c.importLink(link);
+    final err = await widget.c.importLink(
+      link,
+      confirmWarnings: (warnings) async {
+        if (!mounted) return false;
+        return await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Review connection security'),
+                content: SingleChildScrollView(
+                  child: Text(warnings.map((w) => w.message).join('\n\n')),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('I understand — import'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+      },
+    );
     if (!mounted) return;
     if (err == null) {
       Navigator.pop(context, true);

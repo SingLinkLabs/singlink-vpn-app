@@ -1,6 +1,7 @@
 #ifndef RUNNER_FLUTTER_WINDOW_H_
 #define RUNNER_FLUTTER_WINDOW_H_
 
+#include "credential_store.h"
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 
@@ -28,6 +29,7 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+  std::unique_ptr<CredentialStoreChannel> credential_store_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

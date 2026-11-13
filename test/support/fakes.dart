@@ -171,11 +171,15 @@ class FakeRunner implements ProcessRunner {
 class MemoryStore extends AppStore {
   MemoryStore() : super(File('/nonexistent/state.json'));
   Map<String, dynamic>? saved;
+  AppState? snapshot;
 
   @override
-  Future<AppState> load() async =>
-      saved == null ? AppState() : AppState.fromJson(saved!);
+  Future<AppState> load() async => snapshot ?? AppState();
 
   @override
-  Future<void> save(AppState state) async => saved = state.toJson();
+  Future<AppState> commit(AppState state) async {
+    saved = state.toJson();
+    snapshot = state;
+    return state;
+  }
 }

@@ -9,6 +9,7 @@ import 'package:singlink_vpn/core/error_messages.dart';
 import 'package:singlink_vpn/platform/ios.dart';
 
 import 'support/fakes.dart';
+import 'package:singlink_vpn/core/secret_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -16,12 +17,14 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   const channel = iosVpnChannel;
 
+  late String reference;
   late FakeCore ffi;
   late IosTunnelCore core;
   late List<MethodCall> calls;
   late Map<String, Object? Function(MethodCall)> replies;
 
   setUp(() {
+    reference = newSecretReference();
     ffi = FakeCore();
     calls = [];
     replies = {};
@@ -51,41 +54,38 @@ void main() {
     },
   );
 
-  test('start passes the link and the parsed server to the tunnel', () async {
+  test('start passes only the opaque reference to the tunnel', () async {
     replies['start'] = (_) => '{"ok":true}';
-    final r = await core.start(
-      link: 'singlink://a#Hong Kong 01',
+    final r = await core.startProtected(
+      reference: reference,
       listen: 'ignored',
     );
     expect(r.ok, isTrue);
     expect(calls.single.method, 'start');
-    expect(calls.single.arguments, {
-      'link': 'singlink://a#Hong Kong 01',
-      'server': 'node.example.com:443',
-    });
+    expect(calls.single.arguments, {'reference': reference});
   });
 
   test('start errors are mapped to friendly messages', () async {
     replies['start'] = (_) =>
         '{"ok":false,"error":"vpn permission denied: permission denied"}';
-    var r = await core.start(link: 'singlink://a', listen: '');
+    var r = await core.startProtected(reference: reference, listen: '');
     expect(r.ok, isFalse);
     expect(friendlyError(r.error).message, msgVpnPermission);
 
     replies['start'] = (_) =>
         '{"ok":false,"error":"vpn unsupported: the iOS Simulator cannot run a Network Extension packet tunnel"}';
-    r = await core.start(link: 'singlink://a', listen: '');
+    r = await core.startProtected(reference: reference, listen: '');
     expect(friendlyError(r.error).message, msgVpnUnsupported);
 
     replies['start'] = (_) =>
         '{"ok":false,"error":"cannot reach node: dial tcp: i/o timeout"}';
-    r = await core.start(link: 'singlink://a', listen: '');
+    r = await core.startProtected(reference: reference, listen: '');
     expect(friendlyError(r.error).message, msgUnreachable);
   });
 
   test('platform failures never throw from start/stop/probe/exitIP', () async {
     // No handler registered for these methods -> MissingPluginException.
-    final r = await core.start(link: 'singlink://a', listen: '');
+    final r = await core.startProtected(reference: reference, listen: '');
     expect(r.ok, isFalse);
     expect(friendlyError(r.error).message, msgVpnUnsupported);
     expect((await core.stop()).ok, isFalse);

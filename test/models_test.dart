@@ -1,6 +1,7 @@
 // Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
 // SPDX-License-Identifier: Apache-2.0
 
+import 'support/secret_store.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -92,7 +93,7 @@ void main() {
   test('AppStore save/load', () async {
     final dir = await Directory.systemTemp.createTemp('singlink_store_test');
     addTearDown(() => dir.delete(recursive: true));
-    final store = AppStore(File('${dir.path}/sub/state.json'));
+    final store = TestAppStore(File('${dir.path}/sub/state.json'));
     expect((await store.load()).profiles, isEmpty);
 
     final p = ParseLinkResult.fromJson(link, okReply()).profile!;
@@ -116,10 +117,12 @@ void main() {
     expect(s.systemProxy, isFalse);
 
     await store.file.writeAsString('{corrupt');
-    final fresh = await store.load();
-    expect(fresh.port, defaultPort);
-    expect(fresh.systemProxy, isTrue, reason: 'system-wide mode defaults on');
-    expect(fresh.autoSelect, isTrue);
+    await expectLater(store.load(), throwsA(isA<AppStoreException>()));
+    expect(
+      await store.file.readAsString(),
+      '{corrupt',
+      reason: 'corrupt state is preserved for recovery',
+    );
 
     // v1 file from the previous client: "listen" becomes the port.
     await store.file.writeAsString('{"version":1,"listen":"127.0.0.1:1090"}');

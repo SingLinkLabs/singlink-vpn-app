@@ -15,7 +15,15 @@ val buildSinglinkCore by tasks.registering(Exec::class) {
     description = "Builds libsinglink.so for every Android ABI"
     workingDir = rootProject.file("../core")
     commandLine("make", "android")
-    onlyIf { singlinkAbis.any { !File(singlinkCoreDir, "$it/libsinglink.so").exists() } }
+    onlyIf {
+        val artifacts = singlinkAbis.map { File(singlinkCoreDir, "$it/libsinglink.so") }
+        val result = project.exec {
+            workingDir = rootProject.file("..")
+            commandLine(listOf("python3", "scripts/protocol_provenance.py", "check-artifact") + artifacts.map { it.absolutePath })
+            isIgnoreExitValue = true
+        }
+        result.exitValue != 0
+    }
 }
 tasks.named("preBuild") { dependsOn(buildSinglinkCore) }
 
@@ -39,6 +47,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // libsinglink.so (Go core with the TUN bridge) for every ABI, built by
@@ -49,15 +58,37 @@ android {
         }
     }
 
-    buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+    val releaseStore = providers.environmentVariable("SINGLINK_RELEASE_STORE_FILE").orNull
+    val releasePassword = providers.environmentVariable("SINGLINK_RELEASE_STORE_PASSWORD").orNull
+    val releaseAlias = providers.environmentVariable("SINGLINK_RELEASE_KEY_ALIAS").orNull
+    val releaseKeyPassword = providers.environmentVariable("SINGLINK_RELEASE_KEY_PASSWORD").orNull
+    val releaseConfigured = !releaseStore.isNullOrBlank() && !releasePassword.isNullOrBlank() &&
+        !releaseAlias.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank() &&
+        file(releaseStore).isFile && file(releaseStore).name != "debug.keystore"
+    signingConfigs {
+        create("protectedRelease") {
+            if (releaseConfigured) {
+                storeFile = file(releaseStore!!); storePassword = releasePassword
+                keyAlias = releaseAlias; keyPassword = releaseKeyPassword
+            }
         }
     }
+    buildTypes { release { signingConfig = signingConfigs.getByName("protectedRelease") } }
+    gradle.taskGraph.whenReady {
+        val releaseRequested = allTasks.any { it.project == project && it.name.contains("Release") }
+        if (releaseRequested && !releaseConfigured) {
+            throw GradleException("Release signing is missing. Configure external protected signing inputs; debug fallback is disabled.")
+        }
+    }
+
 }
 
 flutter {
     source = "../.."
+}
+
+// Test-only dependencies, pinned to verified stable Google Maven releases.
+dependencies {
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }
