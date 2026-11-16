@@ -57,4 +57,16 @@ void main() {
       c.dispose();
     },
   );
+  test('a hung cleanup cancels quit instead of freezing or exiting', () async {
+    final core = HeldCore()..stopGate = Completer<void>();
+    final c = ClientController(core: core, store: MemoryStore());
+    expect(
+      await requestAppExit(c, timeout: const Duration(milliseconds: 50)),
+      AppExitResponse.cancel,
+    );
+    expect(c.error, isNotNull);
+    core.stopGate!.complete();
+    expect(await requestAppExit(c), AppExitResponse.exit);
+    c.dispose();
+  });
 }

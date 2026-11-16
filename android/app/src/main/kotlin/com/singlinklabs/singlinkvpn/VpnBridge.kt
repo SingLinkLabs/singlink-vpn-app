@@ -48,8 +48,31 @@ object VpnBridge {
             return
         }
         lastFd = fd
+        unadopted.add(fd)
         pendingEstablish?.success(fd)
         pendingEstablish = null
+    }
+
+    /**
+     * Descriptors handed to Dart that the core has not taken yet. Only these
+     * are ever closed here, and each at most once: a descriptor owned by the
+     * core is closed by SingLinkTunStop, never by this bridge.
+     */
+    private val unadopted = mutableSetOf<Int>()
+
+    /** SingLinkTunStart succeeded: the core owns [fd] now. */
+    fun adopted(fd: Int) {
+        unadopted.remove(fd)
+    }
+
+    /** Closes [fd] if the core never took it (start failed or was cancelled). */
+    fun closeUnadopted(fd: Int) {
+        if (fd < 0 || !unadopted.remove(fd)) return
+        if (lastFd == fd) lastFd = -1
+        try {
+            ParcelFileDescriptor.adoptFd(fd).close()
+        } catch (_: Exception) {
+        }
     }
 
     fun establishFailed(code: String, message: String) {
@@ -64,12 +87,7 @@ object VpnBridge {
      */
     fun stop(closeFd: Boolean) {
         epoch += 1
-        if (closeFd && lastFd >= 0) {
-            try {
-                ParcelFileDescriptor.adoptFd(lastFd).close()
-            } catch (_: Exception) {
-            }
-        }
+        if (closeFd) closeUnadopted(lastFd)
         lastFd = -1
         establishFailed("stopped", "VPN stopped")
         service?.shutdown()

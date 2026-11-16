@@ -247,10 +247,10 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
   /// credential to any ordinary file/log. A locked Keychain leaves the old
   /// configuration untouched; the extension refuses legacy plaintext fallback.
   private func migrateLegacyProviderConfiguration() {
-    let operation = generation
+    // Not tied to the start/stop generation: start() is refused until this
+    // finishes, and a stop must not leave the legacy link in OS preferences.
     loadManager { manager, _ in
-      guard operation == self.generation,
-        let manager, let proto = manager.protocolConfiguration as? NETunnelProviderProtocol,
+      guard let manager, let proto = manager.protocolConfiguration as? NETunnelProviderProtocol,
         let legacy = proto.providerConfiguration?["link"] as? String else {
           self.migratingProviderConfiguration = false; return
         }
@@ -258,8 +258,7 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
         let reference = try CredentialKeychain.newReference()
         let record = Self.json(["version": 1, "link": legacy, "acknowledgedWarnings": [String]()])
         try CredentialKeychain.write(reference, value: record)
-        guard (try? CredentialKeychain.read(reference)) == record,
-          operation == self.generation else {
+        guard (try? CredentialKeychain.read(reference)) == record else {
           try? CredentialKeychain.delete(reference)
           self.migratingProviderConfiguration = false; return
         }

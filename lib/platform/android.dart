@@ -14,6 +14,9 @@
 //   Dart → Kotlin  filesDir                 → String
 //                  prepare                  → bool (false: user declined)
 //                  establish {mtu}          → int (detached TUN fd)
+//                  adopted {fd}             → null (the core owns fd now)
+//                  closeFd {fd}             → null (close an fd the core
+//                                            never took; no-op otherwise)
 //                  stop {closeFd}           → null
 //   Kotlin → Dart  revoked                  (onRevoke: another VPN took
 //                                            over or the user turned it off)
@@ -190,7 +193,12 @@ class AndroidVpnCore implements VpnCore {
       if (!_current(generation)) return cancelled;
       if (!granted) return const OpResult(false, vpnPermissionDenied);
       final fd = await channel.invokeMethod<int>('establish', {'mtu': mtu});
-      if (!_current(generation)) return cancelled;
+      if (!_current(generation)) {
+        // A stop landed after Kotlin handed over the descriptor: the core
+        // never saw it, so close it here or the VPN interface stays up.
+        if (fd != null && fd >= 0) await _closeUnadopted(fd);
+        return cancelled;
+      }
       if (fd == null || fd < 0) {
         await _stopService();
         return const OpResult(false, 'cannot establish the VPN interface');
@@ -208,16 +216,22 @@ class AndroidVpnCore implements VpnCore {
       } catch (_) {
         res = const OpResult(false, 'The native tunnel could not start.');
       }
+      if (res.ok) await _markAdopted(fd);
       if (!_current(generation)) {
         if (_owner == generation) {
-          await calls.tunStop();
-          await _stopService(closeFd: !res.ok);
+          if (res.ok) {
+            await calls.tunStop(); // the core closes the descriptor it owns
+          } else {
+            await _closeUnadopted(fd);
+          }
+          await _stopService();
           _owner = null;
         }
         return cancelled;
       }
       if (!res.ok) {
-        await _stopService(closeFd: true);
+        await _closeUnadopted(fd);
+        await _stopService();
         return res;
       }
       _active = true;
@@ -284,6 +298,20 @@ class AndroidVpnCore implements VpnCore {
     } catch (e) {
       return ExitIpResult(ok: false, error: e.toString());
     }
+  }
+
+  Future<void> _closeUnadopted(int fd) async {
+    try {
+      await channel.invokeMethod<void>('closeFd', {'fd': fd});
+    } catch (_) {
+      // The activity is gone; the process owns nothing else to clean up.
+    }
+  }
+
+  Future<void> _markAdopted(int fd) async {
+    try {
+      await channel.invokeMethod<void>('adopted', {'fd': fd});
+    } catch (_) {}
   }
 
   Future<void> _stopService({bool closeFd = false}) async {

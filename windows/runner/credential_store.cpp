@@ -10,7 +10,7 @@
 #include <memory>
 #include <optional>
 #include <regex>
-#include <stdexcept>
+#include <system_error>
 #include <string>
 #include <vector>
 
@@ -20,6 +20,14 @@ using Map = flutter::EncodableMap;
 const std::regex kReference("^slk_v1_[A-Za-z0-9_-]{43}$");
 constexpr size_t kMaxSecretBytes = 65536;
 constexpr LONGLONG kMaxCipherBytes = 131072;
+
+// The runner builds with _HAS_EXCEPTIONS=0, so nothing here relies on STL
+// exceptions: failures are this plain type, and filesystem calls use the
+// std::error_code overloads.
+struct StoreError {
+  explicit StoreError(const char* c) : code(c) {}
+  const char* code;
+};
 
 struct HandleCloser {
   void operator()(void* handle) const noexcept {
@@ -56,10 +64,10 @@ std::string Argument(const Map& args, const char* key) {
   return s ? *s : std::string();
 }
 std::filesystem::path SecretPath(const std::string& ref) {
-  if (!std::regex_match(ref, kReference)) throw std::runtime_error("invalid-reference");
+  if (!std::regex_match(ref, kReference)) throw StoreError("invalid-reference");
   PWSTR folder = nullptr;
   if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &folder)))
-    throw std::runtime_error("unavailable");
+    throw StoreError("unavailable");
   std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned_folder(folder,
                                                                CoTaskMemFree);
   std::filesystem::path dir(owned_folder.get());
@@ -68,12 +76,12 @@ std::filesystem::path SecretPath(const std::string& ref) {
     dir /= component;
     if (!CreateDirectoryW(dir.c_str(), nullptr) &&
         GetLastError() != ERROR_ALREADY_EXISTS)
-      throw std::runtime_error("io");
+      throw StoreError("io");
     const auto attributes = GetFileAttributesW(dir.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES ||
         !(attributes & FILE_ATTRIBUTE_DIRECTORY) ||
         (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
-      throw std::runtime_error("io");
+      throw StoreError("io");
   }
   return dir / (ref + ".bin");
 }
@@ -83,21 +91,21 @@ std::optional<std::string> Read(const std::string& ref) {
       nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
   if (file.get() == INVALID_HANDLE_VALUE) {
     if (MissingFile(GetLastError())) return std::nullopt;
-    throw std::runtime_error("io");
+    throw StoreError("io");
   }
   BY_HANDLE_FILE_INFORMATION info{};
   LARGE_INTEGER size{};
   if (!GetFileInformationByHandle(file.get(), &info) ||
-      !GetFileSizeEx(file.get(), &size)) throw std::runtime_error("io");
+      !GetFileSizeEx(file.get(), &size)) throw StoreError("io");
   if ((info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY |
                                 FILE_ATTRIBUTE_REPARSE_POINT)) ||
       size.QuadPart < 1 || size.QuadPart > kMaxCipherBytes)
-    throw std::runtime_error("corrupt");
+    throw StoreError("corrupt");
   std::vector<BYTE> data(static_cast<size_t>(size.QuadPart));
   DWORD count = 0;
   if (!ReadFile(file.get(), data.data(), static_cast<DWORD>(data.size()),
                 &count, nullptr) || count != data.size())
-    throw std::runtime_error("io");
+    throw StoreError("io");
   file.reset();
   DATA_BLOB encrypted{static_cast<DWORD>(data.size()), data.data()};
   DATA_BLOB entropy{static_cast<DWORD>(ref.size()),
@@ -105,11 +113,11 @@ std::optional<std::string> Read(const std::string& ref) {
   ScopedBlob plain;
   if (!CryptUnprotectData(&encrypted, nullptr, &entropy, nullptr, nullptr,
                           CRYPTPROTECT_UI_FORBIDDEN, &plain.data))
-    throw std::runtime_error("locked");
+    throw StoreError("locked");
   if (!plain.data.cbData || plain.data.cbData > kMaxSecretBytes)
-    throw std::runtime_error("corrupt");
+    throw StoreError("corrupt");
   std::string value(reinterpret_cast<char*>(plain.data.pbData), plain.data.cbData);
-  if (!ValidSecret(value)) throw std::runtime_error("corrupt");
+  if (!ValidSecret(value)) throw StoreError("corrupt");
   return value;
 }
 
@@ -119,7 +127,7 @@ HANDLE CreateCipherTemp(const std::filesystem::path& destination,
     GUID id{};
     wchar_t suffix[40]{};
     if (FAILED(CoCreateGuid(&id)) || !StringFromGUID2(id, suffix, 40))
-      throw std::runtime_error("unavailable");
+      throw StoreError("unavailable");
     *temporary = destination;
     *temporary += L".tmp-";
     *temporary += suffix;
@@ -127,17 +135,17 @@ HANDLE CreateCipherTemp(const std::filesystem::path& destination,
         CREATE_NEW, FILE_ATTRIBUTE_HIDDEN | FILE_FLAG_OPEN_REPARSE_POINT,
         nullptr);
     if (file != INVALID_HANDLE_VALUE) return file;
-    if (GetLastError() != ERROR_FILE_EXISTS) throw std::runtime_error("io");
+    if (GetLastError() != ERROR_FILE_EXISTS) throw StoreError("io");
   }
-  throw std::runtime_error("io");
+  throw StoreError("io");
 }
 
 void Write(const std::string& ref, const std::string& value) {
-  if (!ValidSecret(value)) throw std::runtime_error("corrupt");
+  if (!ValidSecret(value)) throw StoreError("corrupt");
   auto path = SecretPath(ref);
   const auto previous = Read(ref);
   if (previous) {
-    if (*previous != value) throw std::runtime_error("corrupt");
+    if (*previous != value) throw StoreError("corrupt");
     return;
   }
   DATA_BLOB plain{static_cast<DWORD>(value.size()),
@@ -148,29 +156,34 @@ void Write(const std::string& ref, const std::string& value) {
   // Default DPAPI scope is the current user, never LOCAL_MACHINE.
   if (!CryptProtectData(&plain, L"SingLinkVPN credential", &entropy, nullptr,
                         nullptr, CRYPTPROTECT_UI_FORBIDDEN, &encrypted.data))
-    throw std::runtime_error("locked");
+    throw StoreError("locked");
   std::filesystem::path temporary;
   HANDLE raw = CreateCipherTemp(path, &temporary);
-  struct TempCleanup {
-    const std::filesystem::path& path;
-    ~TempCleanup() { DeleteFileW(path.c_str()); }
-  } cleanup{temporary};
+  class TempCleanup {
+   public:
+    explicit TempCleanup(const std::filesystem::path& p) : path_(p) {}
+    TempCleanup(const TempCleanup&) = delete;
+    TempCleanup& operator=(const TempCleanup&) = delete;
+    ~TempCleanup() { DeleteFileW(path_.c_str()); }
+   private:
+    const std::filesystem::path& path_;
+  } cleanup(temporary);
   ScopedHandle file(raw);
   DWORD total = 0;
   while (total < encrypted.data.cbData) {
     DWORD written = 0;
     if (!WriteFile(file.get(), encrypted.data.pbData + total,
                    encrypted.data.cbData - total, &written, nullptr) || !written)
-      throw std::runtime_error("io");
+      throw StoreError("io");
     total += written;
   }
-  if (!FlushFileBuffers(file.get())) throw std::runtime_error("io");
+  if (!FlushFileBuffers(file.get())) throw StoreError("io");
   file.reset();
   // Do not replace an existing immutable reference. A concurrent identical
   // write is idempotent; any other winner is an error, never an overwrite.
   if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_WRITE_THROUGH)) {
     const auto winner = Read(ref);
-    if (!winner || *winner != value) throw std::runtime_error("io");
+    if (!winner || *winner != value) throw StoreError("io");
   }
 }
 
@@ -195,13 +208,13 @@ void DeleteCipherFile(const std::filesystem::path& path) {
   const auto attributes = GetFileAttributesW(path.c_str());
   if (attributes == INVALID_FILE_ATTRIBUTES) {
     if (MissingFile(GetLastError())) return;
-    throw std::runtime_error("io");
+    throw StoreError("io");
   }
   // Never traverse links or recursively remove a directory during cleanup.
   if (attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))
-    throw std::runtime_error("io");
+    throw StoreError("io");
   if (!DeleteFileW(path.c_str()) && !MissingFile(GetLastError()))
-    throw std::runtime_error("io");
+    throw StoreError("io");
 }
 
 void Delete(const std::string& ref) {
@@ -211,10 +224,16 @@ void Delete(const std::string& ref) {
   legacy_tmp += L".tmp";
   DeleteCipherFile(legacy_tmp);
   const auto prefix = path.filename().wstring() + L".tmp-";
-  for (const auto& entry : std::filesystem::directory_iterator(path.parent_path())) {
-    if (OwnedTemporaryName(entry.path().filename().wstring(), prefix))
-      DeleteCipherFile(entry.path());
+  std::error_code error;
+  std::filesystem::directory_iterator it(path.parent_path(), error);
+  const std::filesystem::directory_iterator end;
+  if (error) throw StoreError("io");
+  for (; it != end; it.increment(error)) {
+    if (error) throw StoreError("io");
+    if (OwnedTemporaryName(it->path().filename().wstring(), prefix))
+      DeleteCipherFile(it->path());
   }
+  if (error) throw StoreError("io");
 }
 }  // namespace
 
@@ -236,11 +255,13 @@ CredentialStoreChannel::CredentialStoreChannel(flutter::BinaryMessenger* messeng
         Delete(ref);
         result->Success();
       } else { result->NotImplemented(); }
-    } catch (const std::exception& e) {
-      const std::string code(e.what());
+    } catch (const StoreError& e) {
+      const std::string code(e.code);
       const bool known = code == "invalid-reference" || code == "locked" ||
                          code == "corrupt" || code == "io";
       result->Error(known ? code : "unavailable", "Protected credential operation failed");
+    } catch (...) {
+      result->Error("unavailable", "Protected credential operation failed");
     }
   });
 }

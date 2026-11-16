@@ -142,6 +142,17 @@ runner.source_build_phase.add_file_reference(plugin, true)
 runner.frameworks_build_phase.add_file_reference(xcf, true)
 runner.frameworks_build_phase.add_file_reference(network_extension, true)
 
+# --- protected credentials (shared Keychain adapter, both targets) ----------
+creds = project.main_group.children.find { |g| g.display_name == 'Security Credentials' } ||
+        project.main_group.new_group('Security Credentials')
+def source_root_file(group, path)
+  group.files.find { |f| f.path == path } || group.new_reference(path, :project)
+end
+keychain = source_root_file(creds, '../apple/CredentialKeychain.swift')
+secret_plugin = source_root_file(creds, 'Runner/SecretStorePlugin.swift')
+[runner, ext].each { |t| t.source_build_phase.add_file_reference(keychain, true) }
+runner.source_build_phase.add_file_reference(secret_plugin, true)
+
 ffi_flags = FFI_SYMBOLS.map { |s| "-Wl,-u,_#{s}" }
 runner.build_configurations.each do |c|
   s = c.build_settings

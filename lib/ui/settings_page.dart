@@ -77,6 +77,34 @@ class _SettingsPageState extends State<SettingsPage> {
     if (ok == true) await c.deleteProfile(p.id);
   }
 
+  Future<void> _resetStorage() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset protected settings'),
+        content: const Text(
+          'Your saved servers cannot be read on this device. Resetting removes '
+          'them and their protected data; you will need to add your servers '
+          'again from their links.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await c.resetStorage();
+  }
+
   Future<void> _editPort() async {
     final ctrl = TextEditingController(text: '${c.port}');
     String? error;
@@ -148,6 +176,29 @@ class _SettingsPageState extends State<SettingsPage> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                 children: [
+                  if (c.storageBlocked) ...[
+                    const _Section('Protected settings'),
+                    _Group(
+                      children: [
+                        ListTile(
+                          leading: Icon(Icons.lock_rounded, color: cs.error),
+                          title: const Text('Retry'),
+                          subtitle: const Text(
+                            'Settings could not be unlocked or read',
+                          ),
+                          onTap: c.retryStorage,
+                        ),
+                        ListTile(
+                          leading: Icon(
+                            Icons.restart_alt_rounded,
+                            color: cs.error,
+                          ),
+                          title: const Text('Reset and add servers again'),
+                          onTap: _resetStorage,
+                        ),
+                      ],
+                    ),
+                  ],
                   const _Section('Servers'),
                   _Group(
                     children: [

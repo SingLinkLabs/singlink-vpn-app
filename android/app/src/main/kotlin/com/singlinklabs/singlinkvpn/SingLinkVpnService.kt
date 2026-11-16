@@ -55,13 +55,18 @@ class SingLinkVpnService : VpnService() {
             return START_NOT_STICKY
         }
         val generation = intent.getLongExtra("generation", -1)
+        // Started with startForegroundService: Android requires startForeground
+        // even for a start that is already obsolete, or it kills the app.
+        val foreground = try { goForeground(); null } catch (e: Exception) { e }
         if (!VpnBridge.isPending(generation)) {
-            if (!VpnBridge.hasSession()) stopSelf(startId)
+            if (!VpnBridge.hasSession()) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf(startId)
+            }
             return START_NOT_STICKY
         }
-        try {
-            goForeground()
-        } catch (e: Exception) {
+        if (foreground != null) {
+            val e = foreground
             VpnBridge.establishFailed("foreground", e.message ?: e.toString())
             stopSelf()
             return START_NOT_STICKY
@@ -98,8 +103,14 @@ class SingLinkVpnService : VpnService() {
         return pfd.detachFd()
     }
 
+    private var foregrounded = false
+
     /** Stops the foreground service; the core already closed the TUN. */
     fun shutdown() {
+        // A stop can land between onCreate and onStartCommand. Satisfy the
+        // startForegroundService contract before stopping, or Android crashes
+        // the app with ForegroundServiceDidNotStartInTimeException.
+        if (!foregrounded) try { goForeground() } catch (_: Exception) {}
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -147,6 +158,7 @@ class SingLinkVpnService : VpnService() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        foregrounded = true
     }
 
     private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(

@@ -33,6 +33,9 @@ const probeUrl = 'https://www.gstatic.com/generate_204';
 const probeTimeoutMs = 8000;
 const exitIpTimeoutMs = 8000;
 const linkScheme = 'singlink://';
+const msgStorageBlocked =
+    'Protected settings are unavailable. Unlock this device and tap Retry in '
+    'Settings, or reset them there and add your servers again.';
 
 class ClientController extends ChangeNotifier {
   ClientController({
@@ -145,9 +148,7 @@ class ClientController extends ChangeNotifier {
       _state = await store.load();
     } catch (_) {
       _storageBlocked = true;
-      error = const FriendlyError(
-        "Protected credentials are unavailable. Unlock this device and restart the app, or re-import your credentials.",
-      );
+      error = const FriendlyError(msgStorageBlocked);
     }
     loaded = true;
     final sp = systemProxy;
@@ -175,6 +176,46 @@ class ClientController extends ChangeNotifier {
     _notify();
   }
 
+  /// Settings could not be loaded; connecting and editing stay blocked until
+  /// [retryStorage] succeeds or the user confirms [resetStorage].
+  bool get storageBlocked => _storageBlocked;
+
+  /// Loads protected settings again, for example after unlocking the device.
+  Future<bool> retryStorage() => _withState(() async {
+    if (!_storageBlocked) return true;
+    if (_shutdown || _disposed) return false;
+    try {
+      _state = await store.load();
+      _storageBlocked = false;
+      error = null;
+      log('Protected settings loaded');
+    } catch (_) {
+      error = const FriendlyError(msgStorageBlocked);
+    }
+    _notify();
+    return !_storageBlocked;
+  });
+
+  /// User-confirmed recovery: discards the unreadable settings (never by
+  /// downgrading to plaintext) so servers can be re-imported.
+  Future<bool> resetStorage() => _withState(() async {
+    if (!_storageBlocked) return true;
+    if (_shutdown || _disposed || conn != ConnState.disconnected) return false;
+    try {
+      await store.reset();
+      _state = AppState();
+      _storageBlocked = false;
+      error = null;
+      log('Protected settings were reset. Add your servers again.');
+    } catch (_) {
+      error = const FriendlyError(
+        'Protected settings could not be reset. Try again.',
+      );
+    }
+    _notify();
+    return !_storageBlocked;
+  });
+
   void log(String message, [LogLevel level = LogLevel.info]) {
     logs.add(LogEntry(clock(), message, level));
     if (logs.length > 300) logs.removeRange(0, logs.length - 300);
@@ -194,9 +235,7 @@ class ClientController extends ChangeNotifier {
     Future<bool> Function(List<SecurityWarning>)? confirmWarnings,
   }) async {
     if (_storageBlocked || _shutdown || _disposed) {
-      return const FriendlyError(
-        "Protected credentials are unavailable. Unlock this device and restart the app.",
-      );
+      return const FriendlyError(msgStorageBlocked);
     }
     final trimmed = link.trim();
     if (trimmed.isEmpty) {

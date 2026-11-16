@@ -9,21 +9,24 @@ plugins {
 val singlinkCoreDir = rootProject.file("../core/build/android")
 val singlinkAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
 
-// Builds the core when any ABI is missing (needs Go and the Android NDK; see
-// core/Makefile). Delete core/build/android to force a rebuild.
+// Builds the core when any ABI is missing or does not match the pinned
+// protocol and current core source (needs Go and the Android NDK; see
+// core/Makefile). `make android` re-verifies the pin and fails closed.
+// The check runs lazily at execution time; its output is captured, so a
+// first build does not print a misleading provenance error.
+val singlinkProvenanceCheck = providers.exec {
+    workingDir = rootProject.file("..")
+    commandLine(
+        listOf("python3", "scripts/protocol_provenance.py", "check-artifact") +
+            singlinkAbis.map { File(singlinkCoreDir, "$it/libsinglink.so").absolutePath },
+    )
+    isIgnoreExitValue = true
+}
 val buildSinglinkCore by tasks.registering(Exec::class) {
     description = "Builds libsinglink.so for every Android ABI"
     workingDir = rootProject.file("../core")
     commandLine("make", "android")
-    onlyIf {
-        val artifacts = singlinkAbis.map { File(singlinkCoreDir, "$it/libsinglink.so") }
-        val result = project.exec {
-            workingDir = rootProject.file("..")
-            commandLine(listOf("python3", "scripts/protocol_provenance.py", "check-artifact") + artifacts.map { it.absolutePath })
-            isIgnoreExitValue = true
-        }
-        result.exitValue != 0
-    }
+    onlyIf { singlinkProvenanceCheck.result.get().exitValue != 0 }
 }
 tasks.named("preBuild") { dependsOn(buildSinglinkCore) }
 
@@ -64,7 +67,8 @@ android {
     val releaseKeyPassword = providers.environmentVariable("SINGLINK_RELEASE_KEY_PASSWORD").orNull
     val releaseConfigured = !releaseStore.isNullOrBlank() && !releasePassword.isNullOrBlank() &&
         !releaseAlias.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank() &&
-        file(releaseStore).isFile && file(releaseStore).name != "debug.keystore"
+        file(releaseStore).isFile && file(releaseStore).name != "debug.keystore" &&
+        file(releaseStore).parentFile?.name != ".android"
     signingConfigs {
         create("protectedRelease") {
             if (releaseConfigured) {

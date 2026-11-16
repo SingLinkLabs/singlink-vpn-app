@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:singlink_vpn/platform/android.dart';
 import 'package:singlink_vpn/core/singlink_bindings.dart';
+import 'package:singlink_vpn/models/core_status.dart';
 import 'android_vpn_core_test.dart' show FakeTunCalls;
 
 const location = SingLinkLibLocation(
@@ -98,6 +99,56 @@ void main() {
       expect(calls.running, isTrue);
       expect(calls.log.last, 'tunStart');
       await core.stop();
+    },
+  );
+  test(
+    'stop after Kotlin hands over the TUN fd closes that fd, no core start',
+    () async {
+      final calls = FakeTunCalls();
+      final native = <MethodCall>[];
+      late AndroidVpnCore core;
+      Future<OpResult>? stopping;
+      messenger.setMockMethodCallHandler(vpnChannel, (call) async {
+        native.add(call);
+        if (call.method == 'prepare') return true;
+        if (call.method == 'establish') {
+          // The descriptor is already on its way to Dart when stop arrives.
+          stopping = core.stop();
+          return 42;
+        }
+        return null;
+      });
+      core = AndroidVpnCore(location: location, calls: calls);
+      final r = await core.start(link: 'singlink://synthetic', listen: '');
+      await stopping;
+      expect(r.ok, isFalse);
+      expect(calls.log.where((e) => e == 'tunStart'), isEmpty);
+      final closes = native.where((c) => c.method == 'closeFd').toList();
+      expect(closes.single.arguments, {'fd': 42});
+    },
+  );
+  test(
+    'a cancelled start whose core start failed closes only its own fd',
+    () async {
+      final calls = DelayedTunCalls()..tunStartError = 'synthetic failure';
+      final native = <MethodCall>[];
+      messenger.setMockMethodCallHandler(vpnChannel, (call) async {
+        native.add(call);
+        if (call.method == 'prepare') return true;
+        if (call.method == 'establish') return 42;
+        return null;
+      });
+      final core = AndroidVpnCore(location: location, calls: calls);
+      final first = core.start(link: 'singlink://synthetic', listen: '');
+      await calls.entered.future;
+      await core.stop();
+      calls.release.complete();
+      expect((await first).ok, isFalse);
+      expect(
+        native.where((c) => c.method == 'closeFd').single.arguments,
+        {'fd': 42},
+      );
+      expect(native.where((c) => c.method == 'adopted'), isEmpty);
     },
   );
 }

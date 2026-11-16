@@ -33,7 +33,10 @@ queued and is retried. A leftover `state.json.tmp` from an interrupted older wri
 (which could hold a plaintext link) is removed at start-up. If a profile's protected
 record is missing (restored without its OS key, reset Keychain or DPAPI master key),
 connecting fails closed with a re-import message; re-importing the same server
-replaces the broken entry, and a broken entry never blocks importing others. This does not erase user-created backups, snapshots, swap,
+replaces the broken entry, and a broken entry never blocks importing others. If
+settings cannot be loaded at all (locked store during migration, corrupt metadata),
+Settings offers Retry (after unlocking) and a confirmed reset that removes the
+app-owned files so servers can be added again; neither path writes plaintext. This does not erase user-created backups, snapshots, swap,
 crash dumps or historical disk blocks. Do not place real profiles in tests/logs.
 
 ## Lifecycle and warnings
@@ -42,7 +45,11 @@ Connection generations invalidate late completions. New starts wait for obsolete
 owned cleanup, and shutdown waits for start/proxy cleanup before returning.
 Normal quit waits for that barrier; a cleanup failure cancels quit and allows a
 visible retry. A forced process termination cannot make the same guarantee.
-Platform callbacks reject obsolete consent, service and tunnel starts. The Go TUN
+Platform callbacks reject obsolete consent, service and tunnel starts. On Android a
+cancelled start closes a TUN descriptor the core never adopted (never one the core
+owns), and an obsolete foreground-service start still calls `startForeground`
+before stopping. A quit whose cleanup hangs is cancelled after 20 seconds with a
+visible error instead of freezing or exiting. The Go TUN
 watcher stops only its owning client, using `Engine.StopClient`.
 
 Warnings from the real parser reach an explicit confirmation dialog. Cancellation

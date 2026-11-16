@@ -28,9 +28,15 @@ Future<void> main() async {
 
 /// A normal quit must wait for the safety barrier. A failed cleanup leaves
 /// the app open so the user can retry instead of claiming settings restored.
-Future<AppExitResponse> requestAppExit(ClientController controller) async {
+/// A cleanup that hangs (native stop, OS proxy restore) cancels the quit
+/// after [timeout] rather than freezing it; the barrier keeps running and a
+/// later quit waits for the same attempt.
+Future<AppExitResponse> requestAppExit(
+  ClientController controller, {
+  Duration timeout = const Duration(seconds: 20),
+}) async {
   try {
-    await controller.shutdown();
+    await controller.shutdown().timeout(timeout);
     return AppExitResponse.exit;
   } catch (_) {
     controller.error = const FriendlyError(

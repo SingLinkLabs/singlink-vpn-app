@@ -184,6 +184,54 @@ class AppStore {
     return state;
   });
 
+  /// Explicit, user-confirmed recovery when settings cannot be loaded at all
+  /// (corrupt metadata, or a legacy migration whose secret store is
+  /// permanently unavailable, such as a lost OS key). Removes this app's own
+  /// metadata files and, best effort, the protected records they reference.
+  /// Nothing is downgraded to plaintext; servers must be re-imported.
+  Future<void> reset() => _exclusive(() async {
+    final refs = <String>{};
+    try {
+      final value = jsonDecode(await file.readAsString());
+      if (value is Map<String, dynamic>) {
+        refs.addAll(_references(value));
+        final pending = value['pendingSecretDeletes'];
+        if (pending is List) {
+          refs.addAll(pending.whereType<String>().where(isSecretReference));
+        }
+      }
+    } catch (_) {
+      // Unreadable metadata names no references we could clean up.
+    }
+    try {
+      refs.addAll(await _journalReferences());
+    } catch (_) {}
+    for (final ref in refs) {
+      try {
+        await secrets.delete(ref);
+      } catch (_) {
+        // An orphan protected record is not plaintext; never block recovery.
+      }
+    }
+    for (final owned in [
+      file,
+      File('${file.path}.tmp'),
+      _journal,
+      File('${_journal.path}.tmp'),
+    ]) {
+      try {
+        final type = await FileSystemEntity.type(owned.path, followLinks: false);
+        if (type == FileSystemEntityType.file ||
+            type == FileSystemEntityType.link) {
+          await owned.delete();
+        }
+      } on FileSystemException {
+        throw const AppStoreException('io');
+      }
+    }
+    cleanupPending = false;
+  });
+
   Future<ProtectedCredential> readCredential(Profile profile) async {
     if (profile.link.isNotEmpty) {
       return ProtectedCredential(profile.link, profile.acknowledgedWarnings);

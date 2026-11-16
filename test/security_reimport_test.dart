@@ -3,11 +3,14 @@
 //
 // APP-01 recovery paths: restored state without its protected record, and
 // app-owned plaintext residue from older versions. Synthetic data only.
+import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:singlink_vpn/core/app_store.dart';
 import 'package:singlink_vpn/core/client_controller.dart';
 import 'package:singlink_vpn/models/profile.dart';
+import 'package:singlink_vpn/ui/settings_page.dart';
 import 'support/fakes.dart';
 import 'support/secret_store.dart';
 
@@ -105,5 +108,84 @@ void main() {
     expect(await c.importLink('singlink://synthetic#B'), isNotNull);
     expect(await file.readAsString(), committed);
     expect(c.profiles, hasLength(1));
+  });
+
+  test('unreadable settings block use until retry succeeds', () async {
+    // Legacy plaintext state while the native store is locked.
+    final legacy = AppState().toJson()
+      ..['version'] = 2
+      ..['profiles'] = [
+        {'id': 'a', 'link': 'singlink://synthetic#A', 'server': 'x:1'},
+      ];
+    await file.writeAsString(jsonEncode(legacy));
+    final secrets = MemorySecretStore()..locked = true;
+    final c = ClientController(
+      core: FakeCore(),
+      store: AppStore(file, secrets: secrets),
+    );
+    addTearDown(c.dispose);
+    await c.init();
+    expect(c.storageBlocked, isTrue);
+    expect(c.error?.message, msgStorageBlocked);
+    expect(await c.importLink('singlink://synthetic#B'), isNotNull);
+    expect(await c.retryStorage(), isFalse);
+    expect(await file.readAsString(), contains('singlink://')); // kept for retry
+    secrets.locked = false; // device unlocked
+    expect(await c.retryStorage(), isTrue);
+    expect(c.storageBlocked, isFalse);
+    expect(c.profiles.single.link, isEmpty);
+    expect(await file.readAsString(), isNot(contains('singlink://')));
+  });
+
+  test('confirmed reset recovers from corrupt or unmigratable state', () async {
+    final secrets = MemorySecretStore();
+    final store = AppStore(file, secrets: secrets);
+    final committed = await store.commit(
+      AppState(
+        profiles: [
+          Profile.fromCore('singlink://synthetic#A', {'server': 'x:1'}),
+        ],
+      ),
+    );
+    final ref = committed.profiles.single.secretRef;
+    await file.writeAsString('{not json'); // corrupt metadata
+    final c = ClientController(core: FakeCore(), store: store);
+    addTearDown(c.dispose);
+    await c.init();
+    expect(c.storageBlocked, isTrue);
+    expect(await c.resetStorage(), isTrue);
+    expect(c.storageBlocked, isFalse);
+    expect(c.profiles, isEmpty);
+    expect(await file.exists(), isFalse);
+    expect(await c.importLink('singlink://synthetic#A'), isNull);
+    expect(c.profiles, hasLength(1));
+    // The corrupt file could not name its reference: the orphan stays only in
+    // the protected store, never in ordinary files.
+    expect(secrets.values.containsKey(ref), isTrue);
+    expect(await file.readAsString(), isNot(contains('singlink://')));
+  });
+
+  testWidgets('blocked settings offer Retry and a confirmed reset', (
+    tester,
+  ) async {
+    late ClientController c;
+    await tester.runAsync(() async {
+      await file.writeAsString('{not json');
+      c = ClientController(
+        core: FakeCore(),
+        store: AppStore(file, secrets: MemorySecretStore()),
+      );
+      await c.init();
+    });
+    addTearDown(c.dispose);
+    await tester.pumpWidget(MaterialApp(home: SettingsPage(c: c)));
+    await tester.pumpAndSettle();
+    expect(find.text('Retry'), findsOneWidget);
+    await tester.tap(find.text('Reset and add servers again'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reset protected settings'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(c.storageBlocked, isTrue);
   });
 }

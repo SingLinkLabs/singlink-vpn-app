@@ -41,7 +41,10 @@ jobs:
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
-        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
+        # Fails the step (bash -e) if the pin record and go.mod disagree.
+        run: |
+          rev="$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)"
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}
@@ -102,7 +105,10 @@ jobs:
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
-        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
+        # Fails the step (bash -e) if the pin record and go.mod disagree.
+        run: |
+          rev="$(python singlink-vpn-app/scripts/protocol_provenance.py pin)"
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}
@@ -133,7 +139,7 @@ jobs:
           gcc --version | head -1
           mkdir -p build/windows
           go build -trimpath -buildmode=c-shared -ldflags='-s -w' -o build/windows/singlink.dll ./ffi
-          python3 ../scripts/protocol_provenance.py record build/windows/singlink.dll
+          python ../scripts/protocol_provenance.py record build/windows/singlink.dll
           ls -l build/windows
       - uses: subosito/flutter-action@v2
         with:
@@ -177,7 +183,10 @@ jobs:
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
-        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
+        # Fails the step (bash -e) if the pin record and go.mod disagree.
+        run: |
+          rev="$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)"
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}
@@ -227,7 +236,10 @@ jobs:
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
-        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
+        # Fails the step (bash -e) if the pin record and go.mod disagree.
+        run: |
+          rev="$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)"
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}
@@ -272,7 +284,10 @@ jobs:
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
-        run: echo "revision=$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)" >> "$GITHUB_OUTPUT"
+        # Fails the step (bash -e) if the pin record and go.mod disagree.
+        run: |
+          rev="$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)"
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}

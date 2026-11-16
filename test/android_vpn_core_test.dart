@@ -110,6 +110,8 @@ void main() {
         case 'establish':
           return fd;
         case 'stop':
+        case 'adopted':
+        case 'closeFd':
           return null;
       }
       throw MissingPluginException();
@@ -141,8 +143,9 @@ void main() {
   test('start: consent, TUN, then SingLinkTunStart with the fd', () async {
     final r = await core.start(link: 'singlink://x', listen: '127.0.0.1:1080');
     expect(r.ok, isTrue);
-    expect(methods(), ['prepare', 'establish']);
+    expect(methods(), ['prepare', 'establish', 'adopted']);
     expect(native[1].arguments, {'mtu': 1500});
+    expect(native[2].arguments, {'fd': 42});
     expect(calls.log, ['tunStart']);
     expect(calls.fd, 42);
     expect(calls.tunConfig, {
@@ -169,8 +172,10 @@ void main() {
     final r = await core.start(link: 'singlink://x', listen: '');
     expect(r.ok, isFalse);
     expect(r.error, contains('cannot reach node'));
-    expect(methods(), ['prepare', 'establish', 'stop']);
-    expect(native.last.arguments, {'closeFd': true});
+    // Only the descriptor the core never took is closed, then the service.
+    expect(methods(), ['prepare', 'establish', 'closeFd', 'stop']);
+    expect(native[2].arguments, {'fd': 42});
+    expect(native.last.arguments, {'closeFd': false});
   });
 
   test('start: establish error from Kotlin becomes an OpResult', () async {
@@ -194,7 +199,7 @@ void main() {
     final r = await core.start(link: 'singlink://x', listen: '');
     expect(r.ok, isTrue);
     expect(calls.log, ['tunStop', 'tunStart']);
-    expect(methods(), ['stop', 'prepare', 'establish']);
+    expect(methods(), ['stop', 'prepare', 'establish', 'adopted']);
   });
 
   test('stop: core first, then the service', () async {

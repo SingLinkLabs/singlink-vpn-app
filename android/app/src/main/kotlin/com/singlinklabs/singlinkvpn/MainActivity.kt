@@ -69,6 +69,8 @@ class MainActivity : FlutterActivity() {
                 VpnBridge.stop(call.argument<Boolean>("closeFd") ?: false)
                 result.success(null)
             }
+            "adopted" -> { VpnBridge.adopted(call.argument<Int>("fd") ?: -1); result.success(null) }
+            "closeFd" -> { VpnBridge.closeUnadopted(call.argument<Int>("fd") ?: -1); result.success(null) }
             else -> result.notImplemented()
         }
     }
