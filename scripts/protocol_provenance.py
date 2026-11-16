@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2026 SingLinkLabs
+# Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 # SPDX-License-Identifier: Apache-2.0
 """Fail-closed source pin and native-artifact provenance (no private inputs)."""
 import argparse

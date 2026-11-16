@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 
 // Exercises the real FFI + isolate path against a C mock of libsinglink

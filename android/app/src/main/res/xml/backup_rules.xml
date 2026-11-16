@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright 2026 SingLinkLabs
+<!-- Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
      SPDX-License-Identifier: Apache-2.0 -->
 <full-backup-content>
     <exclude domain="root" path="." />

@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 //
 // APP-01 recovery paths: restored state without its protected record, and
@@ -75,7 +75,10 @@ void main() {
       final after = c.profiles.single;
       expect(after.id, before.id);
       expect(after.secretRef, isNot(before.secretRef));
-      expect((await store.readCredential(after)).link, 'singlink://synthetic#A');
+      expect(
+        (await store.readCredential(after)).link,
+        'singlink://synthetic#A',
+      );
       expect(await file.readAsString(), isNot(contains('singlink://')));
       await c.connect();
       expect(c.isConnected, isTrue);
@@ -129,7 +132,10 @@ void main() {
     expect(c.error?.message, msgStorageBlocked);
     expect(await c.importLink('singlink://synthetic#B'), isNotNull);
     expect(await c.retryStorage(), isFalse);
-    expect(await file.readAsString(), contains('singlink://')); // kept for retry
+    expect(
+      await file.readAsString(),
+      contains('singlink://'),
+    ); // kept for retry
     secrets.locked = false; // device unlocked
     expect(await c.retryStorage(), isTrue);
     expect(c.storageBlocked, isFalse);

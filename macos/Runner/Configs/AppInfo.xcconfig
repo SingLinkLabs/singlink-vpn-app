@@ -8,4 +8,4 @@ PRODUCT_NAME = SingLinkVPN
 PRODUCT_BUNDLE_IDENTIFIER = com.singlinklabs.singlinkvpn
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 SingLinkLabs. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 SingLinkVPN. All rights reserved.

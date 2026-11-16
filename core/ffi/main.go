@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 
 // Command ffi builds libsinglink for the SingLinkVPN apps: the protocol's C ABI
@@ -58,7 +58,7 @@ func SingLinkVersion() (res *C.char) {
 	return out(map[string]string{
 		"version":     singlink.Version,
 		"protocol":    singlink.ProtocolName,
-		"attribution": "SingLinkVPN prototype by SingLinkLabs · " + singlink.Attribution,
+		"attribution": "SingLinkVPN client, software provided by the original author SingLinkVPN · " + singlink.Attribution,
 	})
 }
 

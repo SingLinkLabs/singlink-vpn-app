@@ -1,3 +1,6 @@
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
+// SPDX-License-Identifier: Apache-2.0
+
 // Exposes the SingLink core (Singlink.xcframework, built by `make -C core ios`)
 // and the utun constants the iOS SDK does not publish to Swift.
 #ifndef PacketTunnel_Bridging_Header_h

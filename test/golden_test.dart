@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 
 // Renders the main screen with fake data so the owner can look at it without

@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 // Runtime-only synthetic profiles for parser/storage tests. No network is used.
 package main

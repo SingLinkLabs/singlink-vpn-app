@@ -9,7 +9,9 @@
   desktop.
 - **License:** Apache-2.0, with a required NOTICE attribution.
   "SingLink", "SingLinkVPN", 星連/星连 and the logo are trademarks of
-  SingLinkLabs (see [NOTICE](NOTICE)).
+  SingLinkVPN (see [NOTICE](NOTICE)).
+- **Attribution:** required. Any use or redistribution must keep "Software
+  provided by the original author SingLinkVPN" (see [Attribution](#attribution)).
 - **Version:** first generation (prototype status; per-platform status in the
   table below). **Released:** 2026-11-12, in phase 2 of the SingLinkVPN
   open-source plan.
@@ -22,6 +24,21 @@
 - **Related:** open-source hub
   [singlink-vpn-open-source](https://github.com/SingLinkLabs/singlink-vpn-open-source) ·
   [singlinkvpn.com/en/tech/open-source](https://singlinkvpn.com/en/tech/open-source/)
+
+## Attribution
+
+Any use or redistribution must keep the attribution: **"Software provided by
+the original author SingLinkVPN."** This app and the SingLink Beta Protocol
+were originally developed and provided by SingLinkVPN, https://singlinkvpn.com.
+Redistributions and derivative works (including app-store releases) must
+reproduce the attribution in [NOTICE](NOTICE) in their own NOTICE file and
+wherever they show third-party notices or an About screen, and must not
+remove the source-file copyright headers, the main-screen footer
+("Provided by the original author SingLinkVPN / Powered by the SingLink Beta
+Protocol"), the attribution constants in `lib/legal.dart` or the attribution
+returned by the native core (Apache License 2.0, section 4).
+
+繁體中文：任何使用或轉發，都必須保留署名：軟件由原作者 SingLinkVPN 提供。
 
 ## Background
 
@@ -57,10 +74,11 @@ core.
   CocoaPods or Swift Package Manager.
 - License: Apache-2.0 (see `LICENSE`, `NOTICE`). Redistributions and derivative
   works must keep the source-file copyright headers and the NOTICE attribution
-  ("Based on the SingLinkVPN prototype and the SingLink Beta Protocol by
-  SingLinkLabs"); the app shows it under Settings > About > Licenses.
+  ("Software provided by the original author SingLinkVPN", "Based on the
+  SingLinkVPN prototype and the SingLink Beta Protocol by SingLinkVPN"); the
+  app shows it in the main-screen footer and under Settings > About > Licenses.
   "星連", "SingLink" and
-  "SingLinkVPN" are trademarks of SingLinkLabs: forks must use their own name
+  "SingLinkVPN" are trademarks of SingLinkVPN: forks must use their own name
   and icon.
 
 Screenshots: `test/goldens/` (desktop), `docs/screenshots/android/`,

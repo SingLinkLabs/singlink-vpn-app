@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 #include "credential_store.h"
 #include <windows.h>
@@ -71,6 +71,7 @@ std::filesystem::path SecretPath(const std::string& ref) {
   std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned_folder(folder,
                                                                CoTaskMemFree);
   std::filesystem::path dir(owned_folder.get());
+  // Fixed storage folder names: existing protected credentials live here.
   for (const auto* component : {L"SingLinkLabs", L"SingLinkVPN",
                                  L"ProtectedCredentials"}) {
     dir /= component;

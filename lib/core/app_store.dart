@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 
 // Persists credential references, display metadata and settings as JSON.
@@ -118,6 +118,8 @@ String appSupportDir() {
   final home = Platform.environment['HOME'];
   if (Platform.isWindows) {
     final appData = Platform.environment['APPDATA'];
+    // Fixed storage folder name: existing installs keep their data and the
+    // system-proxy restore journal here, so it must not change.
     if (appData != null) return '$appData\\SingLinkLabs\\SingLinkVPN';
   }
   if ((Platform.isMacOS || Platform.isIOS) && home != null) {
@@ -220,7 +222,10 @@ class AppStore {
       File('${_journal.path}.tmp'),
     ]) {
       try {
-        final type = await FileSystemEntity.type(owned.path, followLinks: false);
+        final type = await FileSystemEntity.type(
+          owned.path,
+          followLinks: false,
+        );
         if (type == FileSystemEntityType.file ||
             type == FileSystemEntityType.link) {
           await owned.delete();

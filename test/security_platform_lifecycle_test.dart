@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 import 'dart:async';
 import 'package:flutter/services.dart';
@@ -144,10 +144,9 @@ void main() {
       await core.stop();
       calls.release.complete();
       expect((await first).ok, isFalse);
-      expect(
-        native.where((c) => c.method == 'closeFd').single.arguments,
-        {'fd': 42},
-      );
+      expect(native.where((c) => c.method == 'closeFd').single.arguments, {
+        'fd': 42,
+      });
       expect(native.where((c) => c.method == 'adopted'), isEmpty);
     },
   );

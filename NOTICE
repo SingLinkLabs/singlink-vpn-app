@@ -1,32 +1,47 @@
 SingLinkVPN — first-generation client
-Copyright 2026 SingLinkLabs
+Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 https://github.com/SingLinkLabs/singlink-vpn-app
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-Attribution
------------
-Section 4 of the Apache License 2.0 applies to every redistribution of this
-work or of any work derived from it, in source or binary form (including apps
-published in app stores). You must:
+Original author
+---------------
+Originally developed and provided by SingLinkVPN — https://singlinkvpn.com
+
+Attribution (required)
+----------------------
+Anyone who uses, redistributes or builds on this work must credit its
+original author. Section 4 of the Apache License 2.0 applies to every
+redistribution of this work or of any work derived from it, in source or
+binary form (including apps published in app stores). You must:
 
   1. keep the copyright and license headers at the top of each source file;
   2. include a copy of the LICENSE file;
-  3. mark the files you changed; and
-  4. include this NOTICE file, or reproduce its attribution text, in your
-     NOTICE file, in your documentation, or where your app shows third-party
-     notices (this app shows it under Settings > About > Licenses):
+  3. mark the files you changed;
+  4. include this NOTICE file, or reproduce the attribution text below, in
+     your own NOTICE file, and also in your documentation and wherever your
+     app shows third-party notices or an "About" screen (this app shows it
+     under Settings > About > Licenses) (Apache License 2.0, section 4(d));
+     and
+  5. keep the in-code attribution unmodified: the main-screen footer and
+     the attribution constants in lib/legal.dart, the license entry the app
+     registers, and the attribution returned by the native core
+     (core/ffi, SingLinkVersion).
 
-     Based on the SingLinkVPN prototype and the SingLink Beta Protocol by SingLinkLabs
+Attribution text to reproduce:
+
+     Software provided by the original author SingLinkVPN.
+     Based on the SingLinkVPN prototype and the SingLink Beta Protocol by SingLinkVPN
+     Originally developed and provided by SingLinkVPN — https://singlinkvpn.com
      https://github.com/SingLinkLabs/singlink-vpn-app
 
 Trademarks
 ----------
 "SingLink", "SingLinkVPN", their Chinese names (星連, 星连) and the logo are
-trademarks of SingLinkLabs. The license does not grant permission to use these
+trademarks of SingLinkVPN. The license does not grant permission to use these
 names or marks, except as required to describe the origin of the work (Apache
 License 2.0, section 6). Forks must use a different name and icon and must not
-be presented as an official SingLinkLabs product.
+be presented as an official SingLinkVPN product.
 
 Third-party software
 --------------------

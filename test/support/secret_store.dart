@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 import 'package:singlink_vpn/core/app_store.dart';
 import 'package:singlink_vpn/core/secret_store.dart';

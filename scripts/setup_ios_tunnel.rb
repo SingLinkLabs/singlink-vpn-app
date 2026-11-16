@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
+# Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 # SPDX-License-Identifier: Apache-2.0
 
 # Adds the iOS device-wide VPN to ios/Runner.xcodeproj (idempotent):

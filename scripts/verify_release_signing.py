@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2026 SingLinkLabs
+# Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 # SPDX-License-Identifier: Apache-2.0
 """Release-pipeline pre-check; Gradle enforces the same rule when signing."""
 import os

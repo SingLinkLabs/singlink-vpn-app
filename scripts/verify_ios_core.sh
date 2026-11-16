@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2026 SingLinkLabs
+# Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

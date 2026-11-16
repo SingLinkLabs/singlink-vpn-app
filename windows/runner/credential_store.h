@@ -1,4 +1,4 @@
-// Copyright 2026 SingLinkLabs
+// Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 #ifndef RUNNER_CREDENTIAL_STORE_H_
 #define RUNNER_CREDENTIAL_STORE_H_
