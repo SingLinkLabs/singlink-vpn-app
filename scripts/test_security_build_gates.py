@@ -34,6 +34,16 @@ class SourceGateTests(unittest.TestCase):
         self.git('commit', '-qm', 'Synthetic fixture')
         self.pin = self.git('rev-parse', 'HEAD')
         (self.app / 'core/protocol-revision.txt').write_text(self.pin)
+        self.write_go_mod(self.pseudo_version())
+    def pseudo_version(self, revision=None):
+        stamp = subprocess.check_output(['git', '-C', str(self.protocol), 'show', '-s', '--format=%cd',
+            '--date=format-local:%Y%m%d%H%M%S', revision or self.pin], text=True,
+            env={**os.environ, 'TZ': 'UTC'}).strip()
+        return f'v0.0.0-{stamp}-{(revision or self.pin)[:12]}'
+    def write_go_mod(self, version):
+        (self.app / 'core/go.mod').write_text('module synthetic/core\n\ngo 1.22\n\nrequire (\n'
+            f'\tgithub.com/SingLinkLabs/singlink-protocol {version}\n)\n\n'
+            'replace github.com/SingLinkLabs/singlink-protocol => ../../singlink-protocol\n')
     def tearDown(self): self.temp.cleanup()
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.protocol), *args], stderr=subprocess.DEVNULL, text=True).strip()
@@ -52,6 +62,33 @@ class SourceGateTests(unittest.TestCase):
         self.assertNotEqual(before, provenance.artifact_state(self.app, artifact))
         artifact.write_bytes(b'changed artifact')
         self.assertNotEqual(before['artifactSHA256'], provenance.artifact_state(self.app, artifact)['artifactSHA256'])
+    def test_upstream_main_moving_keeps_the_approved_dependency(self):
+        # A newer upstream commit exists, but the app revision still names the
+        # approved one: checking out the pin passes, the moved head is refused.
+        self.git('commit', '--allow-empty', '-qm', 'Upstream main moved')
+        moved = self.git('rev-parse', 'HEAD')
+        with self.assertRaises(ValueError): provenance.verify(self.app)
+        self.git('checkout', '-q', self.pin)
+        self.assertEqual(provenance.verify(self.app), self.pin)
+        self.assertNotEqual(moved, self.pin)
+    def test_go_mod_must_pin_the_same_commit(self):
+        self.write_go_mod('v0.0.0')
+        with self.assertRaises(ValueError): provenance.expected(self.app)
+        self.write_go_mod('v0.0.0-20000101000000-' + 'f' * 12)
+        with self.assertRaises(ValueError): provenance.expected(self.app)
+        self.write_go_mod('v0.0.0-20000101000000-' + self.pin[:12])
+        self.assertEqual(provenance.expected(self.app), self.pin)
+        with self.assertRaises(ValueError): provenance.verify(self.app)  # wrong commit time
+        self.write_go_mod(self.pseudo_version())
+        self.assertEqual(provenance.verify(self.app), self.pin)
+    def test_repository_pin_is_consistent(self):
+        # The real checked-in record and go.mod requirement agree.
+        revision = provenance.expected(HERE.parent)
+        self.assertRegex(revision, r'^[0-9a-f]{40}$')
+        workflow = (HERE.parent / '.github/workflows/build.yml').read_text()
+        checkouts = workflow.count('repository: SingLinkLabs/singlink-protocol')
+        self.assertGreaterEqual(checkouts, 5)
+        self.assertEqual(workflow.count('ref: ${{ steps.protocol-pin.outputs.revision }}'), checkouts)
     def test_nonimmutable_pin_is_rejected(self):
         (self.app / 'core/protocol-revision.txt').write_text('main')
         with self.assertRaises(ValueError): provenance.verify(self.app)
@@ -77,5 +114,20 @@ class SigningGateTests(unittest.TestCase):
         self.assertNotIn('SINGLINK_RELEASE_', text)
         self.assertNotIn('PROTOCOL_REPO_TOKEN', text)
         self.assertIn('flutter build apk --debug', text)
+        self.assertNotRegex(text, r'flutter build (apk|appbundle) --release')
+    def test_ci_artifacts_are_named_as_unsigned_or_debug(self):
+        text = (HERE.parent / '.github/workflows/build.yml').read_text()
+        names = [line.split('name:', 1)[1].strip() for line in text.splitlines()
+                 if line.strip().startswith('name: SingLinkVPN-')]
+        self.assertEqual(len(names), 3)
+        for name in names:
+            self.assertRegex(name, r'(DEMO-debug|UNSIGNED)', name)
+    def test_gradle_release_has_no_debug_signing_fallback(self):
+        text = (HERE.parent / 'android/app/build.gradle.kts').read_text()
+        self.assertNotIn('signingConfigs.getByName("debug")', text)
+        self.assertIn('debug fallback is disabled', text)
+        for key in ('SINGLINK_RELEASE_STORE_FILE', 'SINGLINK_RELEASE_STORE_PASSWORD',
+                    'SINGLINK_RELEASE_KEY_ALIAS', 'SINGLINK_RELEASE_KEY_PASSWORD'):
+            self.assertIn(key, text)
 
 if __name__ == '__main__': unittest.main()

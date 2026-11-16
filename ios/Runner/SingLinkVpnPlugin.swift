@@ -100,6 +100,12 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
       guard operation == self.generation else { return reply(Self.cancelled) }
       if let error { return reply(Self.fail(error)) }
       let m = existing ?? NETunnelProviderManager()
+      // A reference created by the one-time legacy migration below is owned
+      // by this plugin, not by the Dart profile store. Remove it once the
+      // configuration points at a profile-owned reference instead.
+      let previous = m.protocolConfiguration as? NETunnelProviderProtocol
+      let migratedOrphan = (previous?.providerConfiguration?["migratedLegacy"] as? Bool == true)
+        ? previous?.providerConfiguration?["secretRef"] as? String : nil
       let proto = NETunnelProviderProtocol()
       proto.providerBundleIdentifier = Self.tunnelBundleId
       proto.serverAddress = "SingLinkVPN"
@@ -113,6 +119,9 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
       m.saveToPreferences { error in
         guard operation == self.generation else { return reply(Self.cancelled) }
         if let error { return reply(Self.fail(error)) }
+        if let orphan = migratedOrphan, orphan != reference {
+          try? CredentialKeychain.delete(orphan)
+        }
         // Reload, or the first start after a save fails with
         // "configuration is stale".
         m.loadFromPreferences { error in
@@ -249,14 +258,20 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
         let reference = try CredentialKeychain.newReference()
         let record = Self.json(["version": 1, "link": legacy, "acknowledgedWarnings": [String]()])
         try CredentialKeychain.write(reference, value: record)
-        guard try CredentialKeychain.read(reference) == record,
+        guard (try? CredentialKeychain.read(reference)) == record,
           operation == self.generation else {
+          try? CredentialKeychain.delete(reference)
           self.migratingProviderConfiguration = false; return
         }
-        proto.providerConfiguration = ["secretRef": reference]
+        proto.providerConfiguration = ["secretRef": reference, "migratedLegacy": true]
         proto.serverAddress = "SingLinkVPN"
         manager.protocolConfiguration = proto
-        manager.saveToPreferences { _ in self.migratingProviderConfiguration = false }
+        manager.saveToPreferences { error in
+          // Not committed: drop the staged item; the saved configuration keeps
+          // the legacy value, which the extension refuses to use.
+          if error != nil { try? CredentialKeychain.delete(reference) }
+          self.migratingProviderConfiguration = false
+        }
       } catch { self.migratingProviderConfiguration = false /* User must unlock/re-import; never downgrade. */ }
     }
   }

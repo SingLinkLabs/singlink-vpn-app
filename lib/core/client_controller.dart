@@ -232,16 +232,62 @@ class ClientController extends ChangeNotifier {
         return const FriendlyError('Import was cancelled.');
       }
       try {
+        // A profile whose protected record is gone (restored backup, reset
+        // OS key, wiped Keychain) can only be repaired by re-importing. An
+        // unreadable record therefore never blocks an import; re-importing the
+        // same server replaces the broken entry in place. A locked store still
+        // fails below, because the new protected write cannot succeed.
+        String? replaces;
         for (final existing in _state.profiles) {
-          if ((await store.readCredential(existing)).link == trimmed) {
+          final String? existingLink;
+          try {
+            existingLink = (await store.readCredential(existing)).link;
+          } on SecretStoreException {
+            if (replaces == null &&
+                existing.server == profile.server &&
+                existing.subject == profile.subject) {
+              replaces = existing.id;
+            }
+            continue;
+          }
+          if (existingLink == trimmed) {
             return const FriendlyError('This server is already in your list.');
           }
         }
-        final candidate = _state.copy()..profiles.add(profile);
+        final candidate = _state.copy();
+        final index = replaces == null
+            ? -1
+            : candidate.profiles.indexWhere((p) => p.id == replaces);
+        if (index < 0) {
+          candidate.profiles.add(profile);
+        } else {
+          final old = candidate.profiles[index];
+          candidate.profiles[index] = Profile(
+            id: old.id,
+            link: profile.link,
+            name: profile.name,
+            server: profile.server,
+            transport: profile.transport,
+            sni: profile.sni,
+            subject: profile.subject,
+            plan: profile.plan,
+            expiresAt: profile.expiresAt,
+            caps: profile.caps,
+            rateKbps: profile.rateKbps,
+            maxConns: profile.maxConns,
+            addedAt: old.addedAt,
+            acknowledgedWarnings: profile.acknowledgedWarnings,
+          );
+        }
         if (!await _commitCandidate(candidate)) {
           return error ?? const FriendlyError('Import was cancelled.');
         }
-        log('Added server "${profile.displayName}"', LogLevel.success);
+        log(
+          index < 0
+              ? 'Added server "${profile.displayName}"'
+              : 'Re-imported server "${profile.displayName}"',
+          LogLevel.success,
+        );
         return null;
       } catch (_) {
         return const FriendlyError(

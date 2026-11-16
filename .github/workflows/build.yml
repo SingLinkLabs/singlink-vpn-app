@@ -160,11 +160,12 @@ jobs:
           test -f singlink.dll
       - name: Zip
         shell: pwsh
-        run: Compress-Archive -Path singlink-vpn-app\build\windows\x64\runner\Release\* -DestinationPath SingLinkVPN-windows-x64.zip
+        run: Compress-Archive -Path singlink-vpn-app\build\windows\x64\runner\Release\* -DestinationPath SingLinkVPN-windows-x64-UNSIGNED-ci.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: SingLinkVPN-windows-x64
-          path: SingLinkVPN-windows-x64.zip
+          # Not Authenticode-signed: a CI build for testing, not a release.
+          name: SingLinkVPN-windows-x64-UNSIGNED-ci
+          path: SingLinkVPN-windows-x64-UNSIGNED-ci.zip
           if-no-files-found: error
 
   android:
@@ -254,11 +255,12 @@ jobs:
           flutter build macos --release
       - name: Zip
         working-directory: singlink-vpn-app/build/macos/Build/Products/Release
-        run: ditto -c -k --keepParent SingLinkVPN.app "$GITHUB_WORKSPACE/SingLinkVPN-macos.zip"
+        run: ditto -c -k --keepParent SingLinkVPN.app "$GITHUB_WORKSPACE/SingLinkVPN-macos-UNSIGNED-adhoc-ci.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: SingLinkVPN-macos
-          path: SingLinkVPN-macos.zip
+          # Ad-hoc signed, not Developer ID signed or notarized: not a release.
+          name: SingLinkVPN-macos-UNSIGNED-adhoc-ci
+          path: SingLinkVPN-macos-UNSIGNED-adhoc-ci.zip
           if-no-files-found: error
 
   ios:

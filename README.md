@@ -138,8 +138,9 @@ open build/macos/Build/Products/Release/SingLinkVPN.app
 
 Build the app core first with `make -C core macos`; it is bundled automatically
 (see below). Checkout the public protocol sibling at the exact commit in
-`core/protocol-revision.txt` before building. `python3 scripts/protocol_provenance.py verify`
-rejects a different or dirty protocol tree. All platform Make targets and packaging
+`core/protocol-revision.txt` (the same commit `core/go.mod` requires as a
+pseudo-version) before building. `python3 scripts/protocol_provenance.py verify`
+rejects a different or dirty protocol tree, or a go.mod/record mismatch. All platform Make targets and packaging
 steps validate the pin; generated native artifacts carry source/hash stamps and
 stale artifacts must be rebuilt. Without it the app still starts and shows the banner
 "Core library libsinglink.dylib not found" with the expected path.

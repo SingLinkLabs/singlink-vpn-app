@@ -1,7 +1,7 @@
-import 'security_warning.dart';
-
 // Copyright 2026 SingLinkLabs (https://github.com/SingLinkLabs)
 // SPDX-License-Identifier: Apache-2.0
+
+import 'security_warning.dart';
 
 /// An imported `singlink://` server profile.
 ///

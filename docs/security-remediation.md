@@ -29,7 +29,11 @@ metadata. A reference-only transaction journal supports crash recovery. Locked,
 missing, corrupt or unavailable stores block connection rather than using a
 plaintext fallback. Failed migration keeps the existing legacy data for retry.
 After metadata commit, removed app-owned records are deleted; failed cleanup stays
-queued and is retried. This does not erase user-created backups, snapshots, swap,
+queued and is retried. A leftover `state.json.tmp` from an interrupted older write
+(which could hold a plaintext link) is removed at start-up. If a profile's protected
+record is missing (restored without its OS key, reset Keychain or DPAPI master key),
+connecting fails closed with a re-import message; re-importing the same server
+replaces the broken entry, and a broken entry never blocks importing others. This does not erase user-created backups, snapshots, swap,
 crash dumps or historical disk blocks. Do not place real profiles in tests/logs.
 
 ## Lifecycle and warnings
@@ -62,13 +66,20 @@ secrets. The release gate rejects absent inputs and the default `debug.keystore`
 Gradle still validates the actual certificate/password when signing. Presence of
 inputs alone does not prove a distribution artifact is properly signed. Verify
 its certificate fingerprint through the trusted release process. Public pull
-requests have no release signing inputs and produce demo debug artifacts only.
+requests have no release signing inputs. CI uploads only artifacts named as such:
+`SingLinkVPN-android-DEMO-debug-apk`, `SingLinkVPN-windows-x64-UNSIGNED-ci` and
+`SingLinkVPN-macos-UNSIGNED-adhoc-ci` (ad-hoc signed, not notarized); the iOS job
+builds without code signing and uploads nothing.
 
 ## Pinned core source
 
 `core/protocol-revision.txt` is the single immutable reviewed protocol revision.
-Every supported Make/build/package entry point and CI job verifies the sibling
-checkout and rejects a dirty or mismatched tree. Native `.source.json` stamps bind
+`core/go.mod` requires the protocol at the matching pseudo-version
+(`v0.0.0-<commit time UTC>-<first 12 hex>`); the gate rejects any disagreement
+between the two. Every supported Make/build/package entry point and CI job
+verifies the sibling checkout and rejects a dirty or mismatched tree; every CI
+protocol checkout uses that full SHA, so a moving upstream `main` cannot change
+what a given app revision builds. Native `.source.json` stamps bind
 the protocol commit, app core source hash and artifact hash. Android rebuilds stale
 artifacts; Apple/Windows packaging rejects them. Rebuild artifacts after changing
 the pin or app-core source. A stamp is reproducibility bookkeeping, not a signed

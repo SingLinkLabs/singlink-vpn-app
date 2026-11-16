@@ -157,6 +157,7 @@ class AppStore {
 
   Future<AppState> load() => _exclusive(() async {
     cleanupPending = false;
+    await _discardStaleMetadataTemp();
     if (!await file.exists()) {
       await _recoverJournal({});
       return AppState();
@@ -254,6 +255,24 @@ class AppStore {
     } else {
       await _writeJournal(remaining);
       cleanupPending = true;
+    }
+  }
+
+  /// Older versions wrote complete links to `state.json.tmp` before renaming
+  /// it. The rename is the only commit point, so a leftover temp file is never
+  /// authoritative: it is app-owned residue from an interrupted write and may
+  /// hold a plaintext link. Remove it (regular files only, never follow a
+  /// directory or link) before anything else runs.
+  Future<void> _discardStaleMetadataTemp() async {
+    final tmp = File('${file.path}.tmp');
+    try {
+      final type = await FileSystemEntity.type(tmp.path, followLinks: false);
+      if (type == FileSystemEntityType.file ||
+          type == FileSystemEntityType.link) {
+        await tmp.delete();
+      }
+    } on FileSystemException {
+      // The next metadata write replaces it atomically; never block start-up.
     }
   }
 
