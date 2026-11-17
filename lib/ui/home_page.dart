@@ -149,10 +149,11 @@ class _Body extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final pal = StatusPalette.of(context);
 
+    final (connectedHeadline, connectedSub) = c.connectedSummary;
     final (headline, sub, color, icon) = switch (c.conn) {
       ConnState.connected => (
-        'Protected',
-        'Your traffic is encrypted',
+        connectedHeadline,
+        connectedSub,
         pal.protected,
         Icons.verified_user_rounded,
       ),

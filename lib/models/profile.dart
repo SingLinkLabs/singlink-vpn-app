@@ -1,6 +1,8 @@
 // Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 
+import 'dart:math';
+
 import 'security_warning.dart';
 
 /// An imported `singlink://` server profile.
@@ -91,7 +93,7 @@ class Profile {
   }) {
     final now = DateTime.now();
     return Profile(
-      id: id ?? now.microsecondsSinceEpoch.toRadixString(36),
+      id: id ?? newProfileId(),
       link: link.trim(),
       secretRef: secretRef,
       name: _str(json['name']),
@@ -134,6 +136,20 @@ class Profile {
     addedAt: _unix(json['addedAt']),
     secretRef: _str(json['secretRef']),
   );
+}
+
+final _idRandom = Random.secure();
+
+/// A new profile ID: 128 random bits from the platform CSPRNG as 32 lowercase
+/// hex digits. Unlike the earlier timestamp IDs it reveals nothing about when
+/// a profile was added and cannot collide for profiles created together.
+/// IDs already stored (including legacy timestamp IDs) are kept unchanged.
+String newProfileId() {
+  final b = StringBuffer();
+  for (var i = 0; i < 16; i++) {
+    b.write(_idRandom.nextInt(256).toRadixString(16).padLeft(2, '0'));
+  }
+  return b.toString();
 }
 
 /// Result of `SingLinkParseLink`: `{"ok":true,"profile":{...}}` or

@@ -18,16 +18,36 @@ void main() {
     final out = '${tmp.path}/$libFileName';
     final args = Platform.isMacOS
         ? ['-dynamiclib', '-o', out, 'test/fixtures/mock_libsinglink.c']
+        : Platform.isWindows
+        ? ['-shared', '-o', out, 'test/fixtures/mock_libsinglink.c']
         : ['-shared', '-fPIC', '-o', out, 'test/fixtures/mock_libsinglink.c'];
     try {
-      final r = await Process.run('cc', args);
+      // Windows CI has MinGW gcc (installed for the cgo core build).
+      final r = await Process.run(Platform.isWindows ? 'gcc' : 'cc', args);
       if (r.exitCode == 0) libPath = out;
     } on ProcessException {
       libPath = null;
     }
   });
 
-  tearDownAll(() => tmp.delete(recursive: true));
+  // Windows cannot delete a DLL this process (and its isolates) still has
+  // loaded, and Dart never unloads it. Retry briefly, then leave only the
+  // OS temp folder behind on Windows instead of failing the whole suite.
+  tearDownAll(() async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        await tmp.delete(recursive: true);
+        return;
+      } on FileSystemException {
+        if (!Platform.isWindows) rethrow;
+        if (attempt >= 4) {
+          printOnFailure('left loaded mock DLL in ${tmp.path}');
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+    }
+  });
 
   test('service round-trips every SingLink call through FFI', () async {
     if (libPath == null) {

@@ -26,11 +26,11 @@ object VpnBridge {
     var pendingMtu: Int = 1500
         private set
 
-    /** Last TUN descriptor handed to Dart (owned by the core once started). */
-    private var lastFd: Int = -1
+    /** True while a TUN descriptor handed to Dart belongs to this session. */
+    private var handedOut = false
     private var epoch: Long = 0
     fun isPending(generation: Long) = generation == epoch && pendingEstablish != null
-    fun hasSession() = pendingEstablish != null || lastFd >= 0
+    fun hasSession() = pendingEstablish != null || handedOut
 
     private val main = Handler(Looper.getMainLooper())
 
@@ -47,28 +47,24 @@ object VpnBridge {
             try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Exception) {}
             return
         }
-        lastFd = fd
-        unadopted.add(fd)
+        handedOut = true
+        heldFds.add(fd)
         pendingEstablish?.success(fd)
         pendingEstablish = null
     }
 
     /**
-     * Descriptors handed to Dart that the core has not taken yet. Only these
-     * are ever closed here, and each at most once: a descriptor owned by the
-     * core is closed by SingLinkTunStop, never by this bridge.
+     * Descriptors handed to Dart and not closed yet. The bridge always owns
+     * them: SingLinkTunStart works on its own duplicate and never closes
+     * these, whatever its result. Dart releases each one exactly once, after
+     * the core call returned (or when the start was abandoned before it), so
+     * this is the only place they are closed, and only once.
      */
-    private val unadopted = mutableSetOf<Int>()
+    private val heldFds = mutableSetOf<Int>()
 
-    /** SingLinkTunStart succeeded: the core owns [fd] now. */
-    fun adopted(fd: Int) {
-        unadopted.remove(fd)
-    }
-
-    /** Closes [fd] if the core never took it (start failed or was cancelled). */
-    fun closeUnadopted(fd: Int) {
-        if (fd < 0 || !unadopted.remove(fd)) return
-        if (lastFd == fd) lastFd = -1
+    /** Closes [fd] if this bridge handed it out and has not closed it yet. */
+    fun release(fd: Int) {
+        if (fd < 0 || !heldFds.remove(fd)) return
         try {
             ParcelFileDescriptor.adoptFd(fd).close()
         } catch (_: Exception) {
@@ -81,21 +77,21 @@ object VpnBridge {
     }
 
     /**
-     * Stops the service. With [closeFd] the core never took the descriptor
-     * (SingLinkTunStart failed), so it is closed here, which removes the VPN
-     * interface.
+     * Stops the service. It never closes a descriptor: one Dart still holds
+     * may be on its way into SingLinkTunStart (closing it now could let the
+     * number be reused before the core duplicates it); Dart releases it once
+     * that call has returned.
      */
-    fun stop(closeFd: Boolean) {
+    fun stop() {
         epoch += 1
-        if (closeFd) closeUnadopted(lastFd)
-        lastFd = -1
+        handedOut = false
         establishFailed("stopped", "VPN stopped")
         service?.shutdown()
     }
 
-    /** onRevoke: the core still holds the descriptor; Dart stops it. */
+    /** onRevoke: the core still holds its duplicate; Dart stops it. */
     fun revoked() {
-        lastFd = -1
+        handedOut = false
         main.post { channel?.invokeMethod("revoked", null) }
     }
 }

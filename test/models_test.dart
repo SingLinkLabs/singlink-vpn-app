@@ -216,6 +216,57 @@ void main() {
     },
   );
 
+  test('A-H02: release builds search only the packaged core', () {
+    final exe = Platform.isWindows
+        ? r'C:\x\SingLinkVPN\singlinkvpn.exe'
+        : '/x/singlink-vpn-app/build/macos/Build/Products/Release/SingLinkVPN.app/Contents/MacOS/SingLinkVPN';
+    final release = singLinkLibCandidates(
+      executable: exe,
+      environment: {'SINGLINK_LIB': '/opt/evil/libsinglink.dylib'},
+      workingDirectory: '/tmp/untrusted',
+      developmentFallbacks: false,
+    );
+    if (Platform.isAndroid || Platform.isIOS) return;
+    expect(release, hasLength(1));
+    expect(release.single, isNot(contains('evil')));
+    expect(release.single, isNot(contains('untrusted')));
+    if (Platform.isMacOS) {
+      expect(
+        release.single,
+        '/x/singlink-vpn-app/build/macos/Build/Products/Release/SingLinkVPN.app/Contents/Frameworks/libsinglink.dylib',
+      );
+    }
+    // Tests run in debug mode, where the development fallbacks stay on.
+    expect(isReleaseBuild, isFalse);
+    final debug = singLinkLibCandidates(
+      executable: exe,
+      environment: {'SINGLINK_LIB': '/opt/dev/libsinglink.dylib'},
+      workingDirectory: '/tmp/dev',
+    );
+    expect(debug.length, greaterThan(1));
+    expect(debug.first, release.single);
+  });
+
+  test('A-H05: new profile IDs are random 128-bit, stored IDs are kept', () {
+    final ids = {for (var i = 0; i < 1000; i++) newProfileId()};
+    expect(ids, hasLength(1000));
+    for (final id in ids.take(20)) {
+      expect(id, matches(RegExp(r'^[0-9a-f]{32}$')));
+    }
+    final a = Profile.fromCore('singlink://a', {'server': 'a:443'});
+    final b = Profile.fromCore('singlink://b', {'server': 'b:443'});
+    expect(a.id, isNot(b.id));
+    expect(a.id, matches(RegExp(r'^[0-9a-f]{32}$')));
+    // A legacy timestamp-derived ID loaded from storage is not rewritten.
+    final legacy = Profile.fromJson({
+      'id': 'm3x9k2q1',
+      'server': 'node.example.com:443',
+      'secretRef': 'ref',
+    });
+    expect(legacy.id, 'm3x9k2q1');
+    expect(Profile.fromJson(legacy.toJson()).id, 'm3x9k2q1');
+  });
+
   test('validatePort', () {
     expect(validatePort('1080'), isNull);
     expect(validatePort(' 65535 '), isNull);

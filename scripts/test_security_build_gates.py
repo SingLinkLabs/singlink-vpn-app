@@ -130,4 +130,38 @@ class SigningGateTests(unittest.TestCase):
                     'SINGLINK_RELEASE_KEY_ALIAS', 'SINGLINK_RELEASE_KEY_PASSWORD'):
             self.assertIn(key, text)
 
+class WorkflowHardeningTests(unittest.TestCase):
+    """A-H01: immutable actions, least-privilege tokens, signed provenance."""
+    def setUp(self):
+        import re
+        self.re = re
+        self.text = (HERE.parent / '.github/workflows/build.yml').read_text()
+    def jobs(self):
+        body = self.text.split('\njobs:\n', 1)[1]
+        parts = self.re.split(r'\n  (?=[a-z][a-z0-9_-]*:\n)', '\n' + body)
+        return {part.split(':', 1)[0].strip(): part for part in parts if part.strip()}
+    def test_every_action_is_pinned_to_a_full_commit_sha(self):
+        uses = [line.strip() for line in self.text.splitlines() if line.strip().startswith(('uses:', '- uses:'))]
+        self.assertGreater(len(uses), 20)
+        for line in uses:
+            self.assertRegex(line, r'uses: [\w.-]+/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$', line)
+    def test_token_permissions_are_least_privilege_per_job(self):
+        self.assertIn('\npermissions: {}\n', self.text)
+        jobs = self.jobs()
+        self.assertEqual(set(jobs), {'test', 'windows', 'android', 'macos', 'ios'})
+        for name, body in jobs.items():
+            self.assertIn('    permissions:\n      contents: read\n', body, name)
+            self.assertNotIn('write-all', body)
+            self.assertNotRegex(body, r'contents: write|packages: write|actions: write', name)
+            uploads = body.count('actions/upload-artifact@')
+            if 'name: SingLinkVPN-' in body:
+                self.assertIn('id-token: write', body, name)
+                self.assertIn('attestations: write', body, name)
+                self.assertEqual(body.count('actions/attest-build-provenance@'), uploads, name)
+            else:
+                self.assertNotIn('id-token: write', body, name)
+    def test_windows_runs_the_full_flutter_suite(self):
+        windows = self.jobs()['windows']
+        self.assertRegex(windows, r'run: flutter test\n')
+
 if __name__ == '__main__': unittest.main()

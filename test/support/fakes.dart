@@ -70,9 +70,14 @@ class FakeCore implements VpnCore {
     return const OpResult(true);
   }
 
+  /// When set, stop fails and the session keeps running (iOS stop timeout).
+  String? stopError;
+
   @override
   Future<OpResult> stop() async {
     calls.add('stop');
+    final err = stopError;
+    if (err != null) return OpResult(false, err);
     running = false;
     return const OpResult(true);
   }

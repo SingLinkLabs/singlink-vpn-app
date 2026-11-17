@@ -16,8 +16,9 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
+# Least privilege: nothing by default; each job grants only what it needs.
+# Every third-party action is pinned to a full commit SHA (tag in the comment).
+permissions: {}
 
 concurrency:
   group: build-${{ github.ref }}
@@ -34,9 +35,11 @@ defaults:
 jobs:
   test:
     name: tests (go + flutter)
+    permissions:
+      contents: read
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: singlink-vpn-app
       - name: Read approved protocol revision
@@ -45,13 +48,13 @@ jobs:
         run: |
           rev="$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)"
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
           token: ${{ github.token }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: singlink-vpn-app/core/go.mod
           cache-dependency-path: singlink-vpn-app/core/go.sum
@@ -66,7 +69,7 @@ jobs:
       - name: go vet (core, GOOS=windows)
         working-directory: singlink-vpn-app/core
         run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./tunnel/...
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -90,7 +93,7 @@ jobs:
         working-directory: singlink-vpn-app
         run: flutter test test/golden_test.dart
       - if: steps.goldens.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: golden-failures
           path: singlink-vpn-app/test/failures/
@@ -98,9 +101,13 @@ jobs:
 
   windows:
     name: windows (x64)
+    permissions:
+      contents: read
+      id-token: write      # build provenance attestation
+      attestations: write  # build provenance attestation
     runs-on: windows-2022  # windows-latest ships VS 2026, which Flutter 3.35 cannot detect
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: singlink-vpn-app
       - name: Read approved protocol revision
@@ -109,13 +116,13 @@ jobs:
         run: |
           rev="$(python singlink-vpn-app/scripts/protocol_provenance.py pin)"
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
           token: ${{ github.token }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: singlink-vpn-app/core/go.mod
           cache-dependency-path: singlink-vpn-app/core/go.sum
@@ -141,7 +148,7 @@ jobs:
           go build -trimpath -buildmode=c-shared -ldflags='-s -w' -o build/windows/singlink.dll ./ffi
           python ../scripts/protocol_provenance.py record build/windows/singlink.dll
           ls -l build/windows
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -153,6 +160,12 @@ jobs:
         env:
           SINGLINK_WINDOWS_REGISTRY_TEST: '1'
         run: flutter test test/windows_system_proxy_test.dart test/windows_registry_smoke_test.dart
+      - name: flutter test (full suite)
+        working-directory: singlink-vpn-app
+        env:
+          # The synthetic parser test runs against the DLL built above.
+          SINGLINK_SYNTHETIC_ABI_LIB: core/build/windows/singlink.dll
+        run: flutter test
       - name: flutter build windows
         working-directory: singlink-vpn-app
         env:
@@ -167,18 +180,30 @@ jobs:
       - name: Zip
         shell: pwsh
         run: Compress-Archive -Path singlink-vpn-app\build\windows\x64\runner\Release\* -DestinationPath SingLinkVPN-windows-x64-UNSIGNED-ci.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           # Not Authenticode-signed: a CI build for testing, not a release.
           name: SingLinkVPN-windows-x64-UNSIGNED-ci
           path: SingLinkVPN-windows-x64-UNSIGNED-ci.zip
           if-no-files-found: error
+      - name: Attest build provenance
+        # Signed SLSA provenance (Sigstore) for the uploaded artifact; verify
+        # with `gh attestation verify <file> --repo SingLinkLabs/singlink-vpn-app`.
+        # Pull requests from forks get no id-token, so only pushes attest.
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: SingLinkVPN-windows-x64-UNSIGNED-ci.zip
 
   android:
     name: android (apk)
+    permissions:
+      contents: read
+      id-token: write      # build provenance attestation
+      attestations: write  # build provenance attestation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: singlink-vpn-app
       - name: Read approved protocol revision
@@ -187,17 +212,17 @@ jobs:
         run: |
           rev="$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)"
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
           token: ${{ github.token }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: singlink-vpn-app/core/go.mod
           cache-dependency-path: singlink-vpn-app/core/go.sum
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '17'
@@ -211,7 +236,7 @@ jobs:
             ANDROID_NDK_HOME="$NDK" \
             NDK_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
           find singlink-vpn-app/core/build/android -name '*.so' -exec ls -l {} +
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -221,17 +246,29 @@ jobs:
         run: |
           flutter pub get
           flutter build apk --debug
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: SingLinkVPN-android-DEMO-debug-apk
           path: singlink-vpn-app/build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
+      - name: Attest build provenance
+        # Signed SLSA provenance (Sigstore) for the uploaded artifact; verify
+        # with `gh attestation verify <file> --repo SingLinkLabs/singlink-vpn-app`.
+        # Pull requests from forks get no id-token, so only pushes attest.
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: singlink-vpn-app/build/app/outputs/flutter-apk/*.apk
 
   macos:
     name: macos
+    permissions:
+      contents: read
+      id-token: write      # build provenance attestation
+      attestations: write  # build provenance attestation
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: singlink-vpn-app
       - name: Read approved protocol revision
@@ -240,19 +277,19 @@ jobs:
         run: |
           rev="$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)"
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
           token: ${{ github.token }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: singlink-vpn-app/core/go.mod
           cache-dependency-path: singlink-vpn-app/core/go.sum
       - name: Build libsinglink.dylib
         run: make -C singlink-vpn-app/core macos
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -268,18 +305,28 @@ jobs:
       - name: Zip
         working-directory: singlink-vpn-app/build/macos/Build/Products/Release
         run: ditto -c -k --keepParent SingLinkVPN.app "$GITHUB_WORKSPACE/SingLinkVPN-macos-UNSIGNED-adhoc-ci.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           # Ad-hoc signed, not Developer ID signed or notarized: not a release.
           name: SingLinkVPN-macos-UNSIGNED-adhoc-ci
           path: SingLinkVPN-macos-UNSIGNED-adhoc-ci.zip
           if-no-files-found: error
+      - name: Attest build provenance
+        # Signed SLSA provenance (Sigstore) for the uploaded artifact; verify
+        # with `gh attestation verify <file> --repo SingLinkLabs/singlink-vpn-app`.
+        # Pull requests from forks get no id-token, so only pushes attest.
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: SingLinkVPN-macos-UNSIGNED-adhoc-ci.zip
 
   ios:
     name: ios (no codesign)
+    permissions:
+      contents: read
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: singlink-vpn-app
       - name: Read approved protocol revision
@@ -288,19 +335,19 @@ jobs:
         run: |
           rev="$(python3 singlink-vpn-app/scripts/protocol_provenance.py pin)"
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
           token: ${{ github.token }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: singlink-vpn-app/core/go.mod
           cache-dependency-path: singlink-vpn-app/core/go.sum
       - name: Build Singlink.xcframework
         run: make -C singlink-vpn-app/core ios
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}

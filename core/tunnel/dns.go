@@ -20,9 +20,21 @@ type dnsClient struct {
 	t    *Tunnel
 	mu   sync.Mutex
 	idle []net.Conn
+	// slots bounds the queries in flight across every DNS flow of the
+	// tunnel; a query arriving when it is full gets SERVFAIL at once.
+	slots chan struct{}
 }
 
 const maxIdleDNS = 4
+
+// maxOutstandingDNS caps concurrent upstream DNS queries per tunnel (each
+// one holds a goroutine and possibly a SingLink connection for up to ~18 s).
+// Ordinary devices stay far below it; a flood beyond it is answered locally.
+var maxOutstandingDNS = 64
+
+func newDNSClient(t *Tunnel) *dnsClient {
+	return &dnsClient{t: t, slots: make(chan struct{}, maxOutstandingDNS)}
+}
 
 func (d *dnsClient) serve(local *gonet.UDPConn) {
 	buf := make([]byte, 4096)
@@ -32,13 +44,34 @@ func (d *dnsClient) serve(local *gonet.UDPConn) {
 		if err != nil {
 			return
 		}
+		select {
+		case d.slots <- struct{}{}:
+		default:
+			if n >= 3 { // has an ID and flags to answer
+				local.WriteTo(servfail(buf[:n]), from)
+			}
+			continue
+		}
 		q := append([]byte(nil), buf[:n]...)
 		go func() {
+			defer func() { <-d.slots }()
 			if resp, err := d.query(q); err == nil {
 				local.WriteTo(resp, from)
 			}
 		}()
 	}
+}
+
+const dnsHeaderLen = 12
+
+// servfail is a header-only SERVFAIL reply to query q (same ID and opcode,
+// RD echoed, no sections): the client retries later instead of timing out.
+func servfail(q []byte) []byte {
+	r := make([]byte, dnsHeaderLen)
+	copy(r[:2], q[:2])      // ID
+	r[2] = 0x80 | q[2]&0x79 // QR, opcode, RD
+	r[3] = 0x80 | 2         // RA, RCODE=SERVFAIL
+	return r
 }
 
 func (d *dnsClient) query(q []byte) ([]byte, error) {

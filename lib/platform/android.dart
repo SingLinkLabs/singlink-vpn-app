@@ -10,14 +10,23 @@
 // every IP packet through the SingLink node. The core and the app share one
 // process, so Status / Probe / ExitIP work over FFI exactly as on desktop.
 //
+// Descriptor ownership (A-04) never depends on whether a start succeeded:
+// SingLinkTunStart never takes the descriptor it is given. The core works on
+// its own duplicate and always consumes it (closes it on any failure,
+// including a Stop that cancels the start after the tunnel took it; keeps it
+// while the session runs). The bridge keeps the original and closes it
+// exactly once: Dart sends `closeFd` once SingLinkTunStart has returned,
+// whatever it returned, or without calling the core at all when the start
+// is abandoned first. Nothing ever closes the original while the core call
+// is in progress.
+//
 // Channel `com.singlinklabs.singlinkvpn/vpn`
 //   Dart → Kotlin  filesDir                 → String
 //                  prepare                  → bool (false: user declined)
 //                  establish {mtu}          → int (detached TUN fd)
-//                  adopted {fd}             → null (the core owns fd now)
-//                  closeFd {fd}             → null (close an fd the core
-//                                            never took; no-op otherwise)
-//                  stop {closeFd}           → null
+//                  closeFd {fd}             → null (close the bridge's own
+//                                            descriptor; once per establish)
+//                  stop                     → null
 //   Kotlin → Dart  revoked                  (onRevoke: another VPN took
 //                                            over or the user turned it off)
 
@@ -172,6 +181,9 @@ class AndroidVpnCore implements VpnCore {
       return OpResult(false, const CoreUnavailableException().toString());
     }
     final generation = ++_generation;
+    // A status poll during this start must not mistake the new session for
+    // an earlier one that ended by itself and stop its service.
+    _active = false;
     final previousStart = _pendingStart;
     final previousStop = _pendingStop;
     final done = Completer<void>();
@@ -196,7 +208,7 @@ class AndroidVpnCore implements VpnCore {
       if (!_current(generation)) {
         // A stop landed after Kotlin handed over the descriptor: the core
         // never saw it, so close it here or the VPN interface stays up.
-        if (fd != null && fd >= 0) await _closeUnadopted(fd);
+        if (fd != null && fd >= 0) await _releaseFd(fd);
         return cancelled;
       }
       if (fd == null || fd < 0) {
@@ -211,26 +223,37 @@ class AndroidVpnCore implements VpnCore {
         'appleHeader': false,
       });
       OpResult res;
+      var threw = false;
       try {
         res = OpResult.fromJson(await _json(() => calls.tunStart(fd, cfg)));
       } catch (_) {
+        threw = true;
         res = const OpResult(false, 'The native tunnel could not start.');
+      } finally {
+        // The core call has returned (or never ran): it only ever used its
+        // own duplicate, so the bridge's original is closed now, exactly
+        // once, on success, failure and cancellation alike. A running
+        // session keeps the interface up through the core's duplicate.
+        await _releaseFd(fd);
       }
-      if (res.ok) await _markAdopted(fd);
+      if (threw) {
+        // The reply was lost, so the core may have started after all: stop
+        // it (a no-op when nothing runs) so it closes its duplicate.
+        try {
+          await calls.tunStop();
+        } catch (_) {}
+      }
       if (!_current(generation)) {
         if (_owner == generation) {
-          if (res.ok) {
-            await calls.tunStop(); // the core closes the descriptor it owns
-          } else {
-            await _closeUnadopted(fd);
-          }
+          // The core closes its duplicate on stop (a failed start already
+          // closed it).
+          if (res.ok) await calls.tunStop();
           await _stopService();
           _owner = null;
         }
         return cancelled;
       }
       if (!res.ok) {
-        await _closeUnadopted(fd);
         await _stopService();
         return res;
       }
@@ -273,7 +296,7 @@ class AndroidVpnCore implements VpnCore {
     final s = CoreStatus.fromJson(await _json(calls.status));
     if (!s.running && _active) {
       // The tunnel ended on its own (node gone, TUN failed, revoked): the
-      // core closed the descriptor; take the notification down too.
+      // core closed its descriptor; take the notification down too.
       _active = false;
       await _stopService();
     }
@@ -300,7 +323,10 @@ class AndroidVpnCore implements VpnCore {
     }
   }
 
-  Future<void> _closeUnadopted(int fd) async {
+  /// Asks Kotlin to close the bridge's original descriptor for [fd] (the core
+  /// never owns it). Kotlin closes each established descriptor at most once
+  /// and ignores numbers it did not hand out.
+  Future<void> _releaseFd(int fd) async {
     try {
       await channel.invokeMethod<void>('closeFd', {'fd': fd});
     } catch (_) {
@@ -308,15 +334,9 @@ class AndroidVpnCore implements VpnCore {
     }
   }
 
-  Future<void> _markAdopted(int fd) async {
+  Future<void> _stopService() async {
     try {
-      await channel.invokeMethod<void>('adopted', {'fd': fd});
-    } catch (_) {}
-  }
-
-  Future<void> _stopService({bool closeFd = false}) async {
-    try {
-      await channel.invokeMethod<void>('stop', {'closeFd': closeFd});
+      await channel.invokeMethod<void>('stop');
     } catch (_) {
       // Nothing more to do: the service may already be gone.
     }

@@ -142,13 +142,24 @@ func SingLinkExitIP(timeoutMs C.int) (res *C.char) {
 	return out(map[string]any{"ok": true, "ip": ip})
 }
 
-// SingLinkTunStart takes over a TUN file descriptor from the OS VPN API and
-// relays all device traffic through the node in config:
+// SingLinkTunStart relays all device traffic arriving on a TUN file
+// descriptor from the OS VPN API through the node in config:
 //
 //	{"link":"singlink://...","mtu":1500,"dns":"1.1.1.1:53","appleHeader":false}
 //
 // appleHeader must be true for the utun descriptor of an Apple Network
-// Extension. The descriptor is closed by SingLinkTunStop / SingLinkStop.
+// Extension.
+//
+// Descriptor ownership does not depend on the result: the core never takes
+// fd. It works on its own close-on-exec duplicate, which it always consumes:
+// closed before returning on any failure (bad config, busy engine, node
+// unreachable, handshake failure, a Stop that cancelled the start before or
+// after the tunnel took the duplicate), otherwise closed by SingLinkTunStop /
+// SingLinkStop or when the TUN fails. The caller keeps fd and closes it
+// exactly once after this call has returned, whatever it returned (Android:
+// the bridge's detached descriptor; Apple: the extension's utun, owned by
+// the Network Extension). The caller must not close fd while the call is in
+// progress: the number could be reused before the duplicate is made.
 //
 //export SingLinkTunStart
 func SingLinkTunStart(fd C.int, config *C.char) (res *C.char) {
@@ -162,30 +173,11 @@ func SingLinkTunStart(fd C.int, config *C.char) (res *C.char) {
 	if err := json.Unmarshal([]byte(C.GoString(config)), &cfg); err != nil {
 		return fail(err)
 	}
-	err := eng.StartWith(cfg.Link, "tun", func(c *singlink.Client) (func(), error) {
-		t, err := tunnel.Start(tunnel.NewFDDevice(int(fd), cfg.AppleHeader), tunnel.Config{Client: c, MTU: cfg.MTU, DNSUpstream: cfg.DNS})
-		if err != nil {
-			return nil, err
-		}
-		tunMu.Lock()
-		curTun = t
-		tunMu.Unlock()
-		// If the OS tears this TUN down, stop the engine as well (but never
-		// a newer session started after this one).
-		go func() {
-			<-t.Done()
-			eng.StopClient(c)
-		}()
-		return func() {
-			tunMu.Lock()
-			if curTun == t {
-				curTun = nil
-			}
-			tunMu.Unlock()
-			t.Close()
-		}, nil
-	})
+	dev, err := tunnel.DupFDDevice(int(fd), cfg.AppleHeader)
 	if err != nil {
+		return fail(fmt.Errorf("cannot duplicate the TUN descriptor: %w", err))
+	}
+	if err := startTun(&eng, dev, cfg.Link, tunnel.Config{MTU: cfg.MTU, DNSUpstream: cfg.DNS}); err != nil {
 		return fail(err)
 	}
 	return out(map[string]any{"ok": true})

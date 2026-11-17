@@ -17,6 +17,10 @@ type noFDDevice struct{}
 // device fails on first use and the tunnel stops.
 func NewFDDevice(int, bool) Device { return noFDDevice{} }
 
+// DupFDDevice always fails here: there is no TUN descriptor to duplicate,
+// and the caller keeps (and closes) whatever it passed.
+func DupFDDevice(int, bool) (Device, error) { return nil, errNoFD }
+
 func (noFDDevice) Read([]byte) (int, error)  { return 0, errNoFD }
 func (noFDDevice) Write([]byte) (int, error) { return 0, errNoFD }
 func (noFDDevice) Close() error              { return nil }

@@ -1,6 +1,7 @@
 // Copyright 2026 SingLinkVPN (https://singlinkvpn.com)
 // SPDX-License-Identifier: Apache-2.0
 import Flutter
+import NetworkExtension
 import UIKit
 import XCTest
 @testable import Runner
@@ -8,6 +9,24 @@ import XCTest
 /// Run only on a fresh isolated Simulator created for this test run. Values and
 /// references are generated here; no existing profile or Keychain item is read.
 final class RunnerTests: XCTestCase {
+  // A-H06: stop reports success only after iOS shows the tunnel down.
+  func testStopActionForEveryStatus() {
+    XCTAssertEqual(SingLinkVpnPlugin.stopAction(for: .connected), .requestStop)
+    XCTAssertEqual(SingLinkVpnPlugin.stopAction(for: .connecting), .requestStop)
+    XCTAssertEqual(SingLinkVpnPlugin.stopAction(for: .reasserting), .requestStop)
+    XCTAssertEqual(SingLinkVpnPlugin.stopAction(for: .disconnecting), .waitOnly)
+    XCTAssertEqual(SingLinkVpnPlugin.stopAction(for: .disconnected), .none)
+    XCTAssertEqual(SingLinkVpnPlugin.stopAction(for: .invalid), .none)
+  }
+
+  func testStopTimeoutOrLiveStatusIsAnError() {
+    XCTAssertEqual(SingLinkVpnPlugin.stopError(final: nil), "timeout while stopping the VPN")
+    XCTAssertNotNil(SingLinkVpnPlugin.stopError(final: .disconnecting))
+    XCTAssertNotNil(SingLinkVpnPlugin.stopError(final: .connected))
+    XCTAssertNil(SingLinkVpnPlugin.stopError(final: .disconnected))
+    XCTAssertNil(SingLinkVpnPlugin.stopError(final: .invalid))
+  }
+
   func testInvalidReferenceFailsBeforeKeychainAccess() throws {
     XCTAssertFalse(CredentialKeychain.valid("../invalid"))
     XCTAssertThrowsError(try CredentialKeychain.read("../invalid"))

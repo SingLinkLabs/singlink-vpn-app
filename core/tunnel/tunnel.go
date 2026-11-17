@@ -104,7 +104,7 @@ func Start(dev Device, cfg Config) (*Tunnel, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &Tunnel{cfg: cfg, dev: dev, stack: s, ep: ep, ctx: ctx, cancel: cancel}
-	t.dns = &dnsClient{t: t}
+	t.dns = newDNSClient(t)
 
 	tcpFwd := tcp.NewForwarder(s, 0, 2048, t.handleTCP)
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpFwd.HandlePacket)

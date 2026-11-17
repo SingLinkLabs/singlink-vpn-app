@@ -66,11 +66,10 @@ class MainActivity : FlutterActivity() {
             "stop" -> {
                 pendingPrepare?.success(false); pendingPrepare = null
                 currentVpnRequest = null; waitingNotification = false
-                VpnBridge.stop(call.argument<Boolean>("closeFd") ?: false)
+                VpnBridge.stop()
                 result.success(null)
             }
-            "adopted" -> { VpnBridge.adopted(call.argument<Int>("fd") ?: -1); result.success(null) }
-            "closeFd" -> { VpnBridge.closeUnadopted(call.argument<Int>("fd") ?: -1); result.success(null) }
+            "closeFd" -> { VpnBridge.release(call.argument<Int>("fd") ?: -1); result.success(null) }
             else -> result.notImplemented()
         }
     }

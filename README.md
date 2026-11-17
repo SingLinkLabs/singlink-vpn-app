@@ -386,7 +386,9 @@ inputs; Android CI artifacts are explicitly named demo debug builds.
   then establishes the TUN in `SingLinkVpnService` (172.19.0.1/30 +
   fdfe:dcba:9876::1/126, default routes, DNS 172.19.0.2, the app itself
   excluded so the core's own sockets bypass the VPN), and hands the detached
-  fd to the core with `SingLinkTunStart`.
+  fd to the core with `SingLinkTunStart`. The core works on its own duplicate
+  of the fd and always consumes it; the bridge closes its original exactly
+  once after the call returns, whatever the result.
 - Foreground service with the notification "SingLinkVPN is connected"; a revoke
   by the system or another VPN stops the core and the app shows "The
   connection dropped. Connect again."

@@ -144,6 +144,10 @@ class SingLinkLibLocation {
   String get expectedPath => searched.isEmpty ? libFileName : searched.first;
 }
 
+/// True in release (product) builds; the same constant as Flutter's
+/// kReleaseMode, resolved at compile time.
+const bool isReleaseBuild = bool.fromEnvironment('dart.vm.product');
+
 /// Marker path for a core linked into the app binary itself (iOS).
 const processLibrary = '<process>';
 
@@ -163,10 +167,16 @@ String get libFileName {
 ///    to the working directory (the app project when using `flutter run`),
 ///    and `singlink-protocol/build/libsinglink.dylib` under every ancestor of
 ///    the executable (finds the sibling protocol repo from the build tree).
+///
+/// Only 1 exists in release builds: a release app loads exclusively the core
+/// packaged with it, never a library named by the environment, the working
+/// directory or a parent folder (A-H02). [developmentFallbacks] defaults to
+/// true only in debug/profile builds and tests.
 List<String> singLinkLibCandidates({
   String? executable,
   Map<String, String>? environment,
   String? workingDirectory,
+  bool developmentFallbacks = !isReleaseBuild,
 }) {
   final sep = Platform.pathSeparator;
   final exe = File(executable ?? Platform.resolvedExecutable).absolute;
@@ -193,6 +203,8 @@ List<String> singLinkLibCandidates({
   } else {
     add('${exe.parent.path}$sep$name');
   }
+
+  if (!developmentFallbacks) return out;
 
   final fromEnv = env['SINGLINK_LIB'];
   if (fromEnv != null && fromEnv.trim().isNotEmpty) add(fromEnv.trim());

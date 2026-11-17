@@ -3,8 +3,9 @@
 <plist version="1.0">
 <dict>
 	<!-- No App Sandbox (direct distribution, not Mac App Store): the app must run
-	     /usr/sbin/networksetup for the system-wide proxy mode, and dev builds load
-	     the core from SINGLINK_LIB / ../singlink-protocol/build/libsinglink.dylib. -->
+	     /usr/sbin/networksetup for the system-wide proxy mode. Release builds load
+	     only the core bundled in Contents/Frameworks (no SINGLINK_LIB or
+	     development-path fallback). -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 	<!-- libsinglink opens a local SOCKS5 listener and outbound tunnel connections. -->

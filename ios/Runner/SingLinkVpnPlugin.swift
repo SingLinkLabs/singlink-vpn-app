@@ -128,8 +128,10 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
           guard operation == self.generation else { return reply(Self.cancelled) }
           if let error { return reply(Self.fail(error)) }
           self.adopt(m)
-          self.stopIfActive(m) {
+          self.stopIfActive(m) { stopError in
             guard operation == self.generation else { return reply(Self.cancelled) }
+            // Never start over a session that has not actually gone down.
+            if let stopError { return reply(Self.json(["ok": false, "error": stopError])) }
             self.startTunnel(m, operation: operation, reply)
           }
         }
@@ -179,26 +181,68 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
     }
   }
 
-  private func stopIfActive(_ m: NETunnelProviderManager, _ then: @escaping () -> Void) {
-    switch m.connection.status {
-    case .connected, .connecting, .reasserting:
+  /// What stopIfActive does for a connection in [status].
+  enum StopAction: Equatable {
+    /// Already down: nothing to wait for.
+    case none
+    /// Ask iOS to stop, then wait until it reports the tunnel down.
+    case requestStop
+    /// iOS is already disconnecting: only wait until it is down.
+    case waitOnly
+  }
+
+  static func stopAction(for status: NEVPNStatus) -> StopAction {
+    switch status {
+    case .connected, .connecting, .reasserting: return .requestStop
+    case .disconnecting: return .waitOnly
+    case .disconnected, .invalid: return .none
+    @unknown default: return .requestStop
+    }
+  }
+
+  /// Only an observed disconnected/invalid status counts as stopped.
+  static func isStopped(_ status: NEVPNStatus) -> Bool {
+    status == .disconnected || status == .invalid
+  }
+
+  /// nil when [final] (the last status seen, nil on timeout) shows the
+  /// tunnel down, else the error to report.
+  static func stopError(final: NEVPNStatus?) -> String? {
+    guard let final else { return "timeout while stopping the VPN" }
+    return isStopped(final) ? nil : "the VPN did not stop (\(name(final)))"
+  }
+
+  /// Stops [m]'s tunnel and calls [then] with nil only once iOS reports it
+  /// disconnected (or invalid); a timeout is reported, never treated as
+  /// success (A-H06).
+  private func stopIfActive(_ m: NETunnelProviderManager, _ then: @escaping (String?) -> Void) {
+    switch Self.stopAction(for: m.connection.status) {
+    case .none:
+      then(nil)
+    case .requestStop, .waitOnly:
       userStopped = true
-      m.connection.stopVPNTunnel()
+      if Self.stopAction(for: m.connection.status) == .requestStop {
+        m.connection.stopVPNTunnel()
+      }
       waitForStatus(m.connection, timeout: Self.stopTimeout, until: { s, _ in
-        s == .disconnected || s == .invalid
-      }) { _ in then() }
-    default:
-      then()
+        Self.isStopped(s)
+      }) { final in then(Self.stopError(final: final)) }
     }
   }
 
   private func stop(_ reply: @escaping (String) -> Void) {
     generation &+= 1
     let operation = generation
-    loadManager { m, _ in
+    loadManager { m, error in
       guard operation == self.generation else { return reply(Self.cancelled) }
+      // A manager that could not be loaded may still be running a tunnel:
+      // report the failure instead of claiming it stopped.
+      if let error { return reply(Self.fail(error)) }
       guard let m else { return reply(Self.json(["ok": true])) }
-      self.stopIfActive(m) { reply(Self.json(["ok": true])) }
+      self.stopIfActive(m) { stopError in
+        if let stopError { return reply(Self.json(["ok": false, "error": stopError])) }
+        reply(Self.json(["ok": true]))
+      }
     }
   }
 

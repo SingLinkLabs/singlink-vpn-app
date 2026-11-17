@@ -12,13 +12,16 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 
 /**
  * Foreground VpnService that owns the device-wide VPN session "SingLinkVPN".
  *
  * It only builds the TUN interface; the descriptor is detached and handed to
- * the Go core (SingLinkTunStart, called from Dart), which relays every packet
- * through the SingLink node and closes the descriptor when it stops.
+ * Dart, which passes it to the Go core (SingLinkTunStart). The core relays
+ * every packet through the SingLink node on its own duplicate of the
+ * descriptor; [VpnBridge] closes the original once that call has returned.
  */
 class SingLinkVpnService : VpnService() {
 
@@ -98,14 +101,14 @@ class SingLinkVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
         val pfd = builder.establish()
             ?: throw IllegalStateException("VPN permission was not granted")
-        // Ownership moves to the core (it reads the descriptor through Go's
-        // poller and closes it in SingLinkTunStop).
+        // The raw descriptor now belongs to VpnBridge, which closes it exactly
+        // once (the core only ever closes its own duplicate).
         return pfd.detachFd()
     }
 
     private var foregrounded = false
 
-    /** Stops the foreground service; the core already closed the TUN. */
+    /** Stops the foreground service; the core closes its TUN duplicate. */
     fun shutdown() {
         // A stop can land between onCreate and onStartCommand. Satisfy the
         // startForegroundService contract before stopping, or Android crashes
@@ -117,8 +120,12 @@ class SingLinkVpnService : VpnService() {
 
     override fun onRevoke() {
         // Another VPN took over, or the user disconnected in system settings.
-        VpnBridge.revoked()
-        shutdown()
+        // onRevoke arrives on a binder thread; the bridge and the service
+        // state are only touched on the main thread.
+        Handler(Looper.getMainLooper()).post {
+            VpnBridge.revoked()
+            shutdown()
+        }
     }
 
     private fun goForeground() {

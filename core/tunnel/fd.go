@@ -9,6 +9,8 @@ import (
 	"os"
 	"sync"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 // fdDevice wraps a TUN file descriptor handed over by the OS VPN API
@@ -26,10 +28,33 @@ type fdDevice struct {
 	once  sync.Once
 }
 
-// NewFDDevice returns a Device for fd. Set appleHeader on macOS/iOS utun.
+// NewFDDevice returns a Device that takes ownership of fd: closing the
+// Device closes fd. Set appleHeader on macOS/iOS utun.
 func NewFDDevice(fd int, appleHeader bool) Device {
 	syscall.SetNonblock(fd, true)
 	return &fdDevice{f: os.NewFile(uintptr(fd), "tun"), afHdr: appleHeader}
+}
+
+// DupFDDevice returns a Device over a close-on-exec duplicate of fd and
+// never takes fd itself: the caller still owns fd and must close it, and
+// closing the Device closes only the duplicate. On error nothing was
+// duplicated and there is nothing to close.
+//
+// This is the ownership contract of SingLinkTunStart: whatever the start
+// result, the core consumes exactly its own duplicate and the OS VPN layer
+// closes exactly its original, so a failed or cancelled start can never
+// make both sides close the same descriptor number.
+func DupFDDevice(fd int, appleHeader bool) (Device, error) {
+	if fd < 0 {
+		return nil, syscall.EBADF
+	}
+	// F_DUPFD_CLOEXEC duplicates and marks close-on-exec atomically, so no
+	// child forked meanwhile (by Go, Java or native code) inherits it.
+	dup, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	return NewFDDevice(dup, appleHeader), nil
 }
 
 func (d *fdDevice) Read(p []byte) (int, error) {

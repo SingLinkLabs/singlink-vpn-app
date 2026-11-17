@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/netip"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -243,4 +244,109 @@ func TestCloseStopsTunnel(t *testing.T) {
 		t.Fatal("Done not closed")
 	}
 	_ = errors.New
+}
+
+// A-H04: queries in flight are capped across the tunnel; the excess is
+// answered locally with SERVFAIL instead of piling up goroutines and
+// upstream connections, and freed slots are reused.
+func TestDNSOutstandingQueriesAreCapped(t *testing.T) {
+	old := maxOutstandingDNS
+	maxOutstandingDNS = 3
+	t.Cleanup(func() { maxOutstandingDNS = old })
+
+	release := make(chan struct{})
+	var inFlight, peak atomic.Int32
+	dl, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer dl.Close()
+	go func() {
+		for {
+			c, err := dl.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				for {
+					var l [2]byte
+					if _, err := io.ReadFull(c, l[:]); err != nil {
+						return
+					}
+					q := make([]byte, binary.BigEndian.Uint16(l[:]))
+					io.ReadFull(c, q)
+					n := inFlight.Add(1)
+					for {
+						p := peak.Load()
+						if n <= p || peak.CompareAndSwap(p, n) {
+							break
+						}
+					}
+					<-release
+					inFlight.Add(-1)
+					a := append([]byte(nil), q...)
+					a[2] |= 0x80
+					c.Write(append(binary.BigEndian.AppendUint16(nil, uint16(len(a))), a...))
+				}
+			}()
+		}
+	}()
+	p, _ := setup(t, dl.Addr().String())
+	c, err := gonet.DialUDP(p.s, nil, &tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4([4]byte{172, 19, 0, 2}), Port: 53}, ipv4.ProtocolNumber)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	query := func(id uint16) []byte {
+		q := make([]byte, 17)
+		binary.BigEndian.PutUint16(q, id)
+		q[2] = 0x01 // RD
+		q[5] = 1    // QDCOUNT
+		return q
+	}
+	const total = 8
+	for i := range total {
+		c.Write(query(uint16(100 + i)))
+		time.Sleep(20 * time.Millisecond)
+	}
+	b := make([]byte, 512)
+	servfails := 0
+	c.SetDeadline(time.Now().Add(10 * time.Second))
+	for servfails < total-3 {
+		n, err := c.Read(b)
+		if err != nil {
+			t.Fatalf("after %d SERVFAIL replies: %v", servfails, err)
+		}
+		if n != 12 || b[3]&0x0f != 2 || b[2]&0x80 == 0 || b[2]&0x01 == 0 {
+			t.Fatalf("unexpected reply % x", b[:n])
+		}
+		servfails++
+	}
+	time.Sleep(200 * time.Millisecond)
+	if got := peak.Load(); got > 3 {
+		t.Fatalf("upstream saw %d concurrent queries, cap is 3", got)
+	}
+	close(release)
+	answers := 0
+	for answers < 3 {
+		n, err := c.Read(b)
+		if err != nil {
+			t.Fatalf("after %d answers: %v", answers, err)
+		}
+		if n == 17 && b[3]&0x0f == 0 {
+			answers++
+		}
+	}
+	// Slots are free again.
+	c.Write(query(999))
+	n, err := c.Read(b)
+	if err != nil || n != 17 || binary.BigEndian.Uint16(b) != 999 {
+		t.Fatalf("query after release: % x, %v", b[:n], err)
+	}
+}
+
+func TestServfailEchoesIDAndRD(t *testing.T) {
+	r := servfail([]byte{0xab, 0xcd, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0, 1, 2})
+	want := []byte{0xab, 0xcd, 0x81, 0x82, 0, 0, 0, 0, 0, 0, 0, 0}
+	if !bytes.Equal(r, want) {
+		t.Fatalf("servfail = % x, want % x", r, want)
+	}
 }

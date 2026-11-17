@@ -99,6 +99,52 @@ void main() {
     await c.disconnect();
   });
 
+  test('A-H03: connected wording matches what is actually routed', () async {
+    await c.importLink('singlink://a#Tokyo');
+    await c.connect();
+    expect(c.connectedSummary, (
+      'Protected',
+      'System proxy on — apps using it are protected',
+    ));
+    await c.setSystemProxy(false);
+    expect(c.connectedSummary, (
+      'Connected',
+      'Apps set to use proxy 127.0.0.1:1080 are protected',
+    ));
+    await c.disconnect();
+
+    runner.failing.add('-listallnetworkservices');
+    await c.setSystemProxy(true);
+    await c.connect();
+    expect(c.proxyWarning, isNotNull);
+    expect(c.connectedSummary.$1, 'Connected');
+    await c.disconnect();
+
+    core.usesLocalProxy = false; // Android / iOS device-wide VPN
+    await c.connect();
+    expect(c.connectedSummary, (
+      'Protected',
+      'Traffic encrypted by SingLinkVPN',
+    ));
+    await c.disconnect();
+  });
+
+  test(
+    'A-H06: a stop that did not stop is not shown as disconnected',
+    () async {
+      await c.importLink('singlink://a#Tokyo');
+      await c.connect();
+      core.stopError = 'timeout while stopping the VPN';
+      await c.disconnect();
+      expect(c.conn, ConnState.connected);
+      expect(c.error!.message, msgStopFailed);
+      expect(c.error!.detail, 'timeout while stopping the VPN');
+      core.stopError = null;
+      await c.disconnect();
+      expect(c.conn, ConnState.disconnected);
+    },
+  );
+
   test('start failure becomes a friendly message', () async {
     core.startError = 'singlink: token expired';
     await c.importLink('singlink://a#Tokyo');

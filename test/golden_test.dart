@@ -5,6 +5,10 @@
 // running the app. Regenerate after UI changes:
 //   flutter test --update-goldens test/golden_test.dart
 // PNGs: test/goldens/main_*.png (macOS fonts; other OSes may differ).
+// The references are macOS renderings, so the comparisons run only on macOS
+// (other hosts skip them instead of failing on font rasterisation).
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:singlink_vpn/core/client_controller.dart';
@@ -15,6 +19,14 @@ import 'support/fakes.dart';
 import 'support/fonts.dart';
 
 void main() {
+  group(
+    'goldens',
+    _goldens,
+    skip: Platform.isMacOS ? false : 'golden references are macOS renderings',
+  );
+}
+
+void _goldens() {
   setUpAll(loadGoldenFonts);
 
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
@@ -50,7 +62,8 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 450));
 
-      expect(find.text('Protected'), findsOneWidget);
+      expect(find.text(c.connectedSummary.$1), findsOneWidget);
+      expect(find.text(c.connectedSummary.$2), findsOneWidget);
       expect(find.text('01:23:45'), findsOneWidget);
       expect(find.text('Your IP: 203.0.113.7'), findsOneWidget);
 

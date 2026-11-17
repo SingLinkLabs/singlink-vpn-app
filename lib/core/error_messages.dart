@@ -19,6 +19,7 @@ class FriendlyError {
   String toString() => message;
 }
 
+const msgStopFailed = 'The VPN did not stop. Try again.';
 const msgExpired = 'Your plan has expired. Renew it or update the server.';
 const msgRevoked =
     'Your account has been suspended. Contact support or update the server.';

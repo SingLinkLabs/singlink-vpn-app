@@ -83,6 +83,14 @@ void main() {
     expect(friendlyError(r.error).message, msgUnreachable);
   });
 
+  test('A-H06: an iOS stop timeout is reported, never as success', () async {
+    replies['stop'] = (_) =>
+        jsonEncode({'ok': false, 'error': 'timeout while stopping the VPN'});
+    final s = await core.stop();
+    expect(s.ok, isFalse);
+    expect(s.error, 'timeout while stopping the VPN');
+  });
+
   test('platform failures never throw from start/stop/probe/exitIP', () async {
     // No handler registered for these methods -> MissingPluginException.
     final r = await core.startProtected(reference: reference, listen: '');

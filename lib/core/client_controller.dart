@@ -109,6 +109,20 @@ class ClientController extends ChangeNotifier {
   bool get busy =>
       conn == ConnState.connecting || conn == ConnState.disconnecting;
   bool get isConnected => conn == ConnState.connected;
+
+  /// Headline and subtitle for the connected state, worded for what this
+  /// platform actually routes (A-H03): a device-wide VPN on mobile; on
+  /// desktop only apps that use the system proxy (or the local proxy port).
+  (String, String) get connectedSummary {
+    if (!core.usesLocalProxy) {
+      return ('Protected', 'Traffic encrypted by SingLinkVPN');
+    }
+    if (systemProxySupported && systemProxyEnabled && proxyWarning == null) {
+      return ('Protected', 'System proxy on — apps using it are protected');
+    }
+    return ('Connected', 'Apps set to use proxy $listen are protected');
+  }
+
   int get totalBytes => status.up + status.down;
 
   Duration get elapsed {
@@ -556,7 +570,25 @@ class ClientController extends ChangeNotifier {
     await _restoreSystemProxy();
     final res = await core.stop();
     if (_disposed || generation != _generation) return;
-    if (!res.ok) log('Error while stopping the connection', LogLevel.error);
+    if (!res.ok) {
+      log('Error while stopping the connection', LogLevel.error);
+      // A failed stop (for example iOS not reporting the tunnel down in
+      // time) is not shown as disconnected while the tunnel still runs.
+      bool stillRunning;
+      try {
+        stillRunning = (await core.status()).running;
+      } catch (_) {
+        stillRunning = false;
+      }
+      if (_disposed || generation != _generation) return;
+      if (stillRunning) {
+        conn = ConnState.connected;
+        error = FriendlyError(msgStopFailed, res.error);
+        _startPolling();
+        _notify();
+        return;
+      }
+    }
     _resetDisconnected();
     log('Disconnected');
   }
