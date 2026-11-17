@@ -94,18 +94,26 @@ void main() {
       final dir = Directory(root);
       expect(dir.existsSync(), isTrue, reason: root);
       for (final f in dir.listSync(recursive: true).whereType<File>()) {
-        if (!RegExp(r'\.(dart|go|kt|swift|py|sh|rb|h)$').hasMatch(f.path)) {
+        // Platform-neutral: '/' separators on every host (Windows lists
+        // 'core\\build\\...'), so generated output is excluded everywhere.
+        final path = f.path.replaceAll(r'\', '/');
+        if (!RegExp(r'\.(dart|go|kt|swift|py|sh|rb|h)$').hasMatch(path)) {
           continue;
         }
-        if (f.path.contains('/build/') || f.path.contains('/.dart_tool/')) {
+        final segments = path.split('/');
+        if (segments.contains('build') || segments.contains('.dart_tool')) {
           continue;
         }
-        files.add(f.path);
+        files.add(path);
       }
     }
     final missing = <String>[];
     for (final path in files) {
-      final head = File(path).readAsLinesSync().take(4).join('\n');
+      // Tolerate a UTF-8 BOM and CRLF checkouts; the header text itself
+      // must still be present in the first four lines.
+      var text = File(path).readAsStringSync();
+      if (text.startsWith('\uFEFF')) text = text.substring(1);
+      final head = text.replaceAll('\r', '').split('\n').take(4).join('\n');
       if (!head.contains('Copyright 2026 SingLinkVPN')) missing.add(path);
       if (!head.contains('SPDX-License-Identifier: Apache-2.0')) {
         missing.add(path);

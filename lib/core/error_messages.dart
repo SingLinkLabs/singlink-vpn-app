@@ -32,6 +32,12 @@ const msgTooManyConns =
 const msgUnreachable = "Can't reach the server. Try another location.";
 const msgRejected =
     'The server refused the connection. Check that your device time is correct, or update the server.';
+
+/// The node refused the handshake in a way that most often means a protocol
+/// draft or server-key mismatch (the core's text also mentions the clock).
+const msgProtocolMismatch =
+    "Couldn't connect: this server uses a different protocol version or key. "
+    'Update the app or re-import the server link, and check your device time.';
 const msgTimeout =
     'The connection timed out. Check your network or try another location.';
 const msgPortInUse =
@@ -63,6 +69,10 @@ const _table = <(String, String)>[
   ('token not yet valid', msgNotYetValid),
   ('capability not granted', msgCapDenied),
   ('too many concurrent connections', msgTooManyConns),
+  // Protocol 1.0.0-draft (draft 4) diagnostic; keeps the older prefix
+  // below, so it must be matched first.
+  ('handshake rejected', msgProtocolMismatch),
+  ('protocol draft mismatch', msgProtocolMismatch),
   ('node rejected the credentials', msgRejected),
   ('server closed the connection during handshake', msgRejected),
   ('malformed link', msgBadLink),

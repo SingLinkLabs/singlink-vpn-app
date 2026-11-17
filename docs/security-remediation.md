@@ -162,12 +162,26 @@ Try again."). Covered by `ios/RunnerTests` (status decisions; passed on a fresh
 iOS 27.2 Simulator), `test/ios_tunnel_core_test.dart` and `test/controller_test.dart`.
 Extension termination needs a signed device; the Simulator cannot run the tunnel.
 
+### Protocol pin and handshake diagnostic
+
+The core is pinned to the remediated protocol revision
+`b9246900205cf822739965e87cf601f6af3bdffb` (`core/protocol-revision.txt`, the
+`core/go.mod` pseudo-version with its UTC commit time). Its client reports a refused
+handshake as a possible protocol draft or server-key mismatch (keeping the older
+"node rejected the credentials" prefix); the app shows "Couldn't connect: this
+server uses a different protocol version or key. Update the app or re-import the
+server link, and check your device time." Covered by
+`test/location_and_errors_test.dart`.
+
 ### Test-suite failures from the re-audit (section 8)
 
 The Windows `ffi_mock_test` teardown now retries and tolerates the mock DLL that
 Windows keeps loaded, and CI runs the full `flutter test` on the Windows runner
 (MinGW `gcc` builds the mock; the synthetic parser test uses the freshly built
 DLL). Goldens are compared only on macOS, where the references were rendered.
+The copyright-header test compares paths with `/` separators and tolerates CRLF
+checkouts and a UTF-8 BOM on every host, so generated cgo headers under
+`core/build` are excluded on Windows too (the check itself is unchanged).
 `test/synthetic_node_e2e_test.dart` runs connect, probe, SOCKS relay, status and
 stop through the real core against a throwaway loopback node (`core/testnode`,
 fresh keys, no external server) wherever the core library is built, including CI

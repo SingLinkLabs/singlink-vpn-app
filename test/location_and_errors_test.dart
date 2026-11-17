@@ -84,6 +84,18 @@ void main() {
         ).message,
         msgRejected,
       );
+      // The pinned core's draft/key mismatch diagnostic (exact text from
+      // singlink.ErrRejected), alone and wrapped by the engine.
+      const rejected =
+          'singlink: node rejected the credentials: handshake rejected, possible '
+          'protocol draft mismatch (this client speaks SingLink Beta draft 4) or '
+          'wrong server key; also check the device clock, then renew the link';
+      for (final raw in [rejected, 'cannot reach node: $rejected']) {
+        final f = friendlyError(raw);
+        expect(f.message, msgProtocolMismatch);
+        expect(f.detail, raw);
+      }
+      expect(friendlyLinkError(rejected).message, msgProtocolMismatch);
       expect(
         friendlyError('singlink: bad server key in link').message,
         msgBadLink,
