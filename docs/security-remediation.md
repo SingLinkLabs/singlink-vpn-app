@@ -165,8 +165,10 @@ Extension termination needs a signed device; the Simulator cannot run the tunnel
 ### Protocol pin and handshake diagnostic
 
 The core is pinned to the remediated protocol revision
-`b9246900205cf822739965e87cf601f6af3bdffb` (`core/protocol-revision.txt`, the
-`core/go.mod` pseudo-version with its UTC commit time). Its client reports a refused
+`7822e49cc84ee421fa9d0dbddd8fff6257019be9` (`core/protocol-revision.txt`, the
+`core/go.mod` pseudo-version with its UTC commit time). That revision adds the
+node-side F-01 fix (a copy of an admitted first flight never gets a status-only
+answer); the client and the wire format are unchanged. Its client reports a refused
 handshake as a possible protocol draft or server-key mismatch (keeping the older
 "node rejected the credentials" prefix); the app shows "Couldn't connect: this
 server uses a different protocol version or key. Update the app or re-import the
