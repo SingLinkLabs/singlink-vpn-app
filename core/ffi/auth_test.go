@@ -162,6 +162,41 @@ func TestStartLocalRequiresCredentialsWhenAuthRequested(t *testing.T) {
 	}
 }
 
+// The reply carries the credentials of the session it started (engine
+// StartAuth): after a stop and a new start, the previous login is refused
+// and the new one works, and a stopped engine reports no credentials.
+func TestStartLocalReturnsTheSessionsOwnCredentials(t *testing.T) {
+	link := syntheticLink(t)
+	var e engine.Engine
+	t.Cleanup(e.Stop)
+	first := startLocalJSON(t, &e, map[string]any{"link": link, "listen": "127.0.0.1:0", "auth": true})
+	if first["ok"] != true {
+		t.Fatalf("first start: %v", first["error"])
+	}
+	e.Stop()
+	if u, p := e.Credentials(); u != "" || p != "" {
+		t.Fatal("credentials kept after Stop")
+	}
+	second := startLocalJSON(t, &e, map[string]any{"link": link, "listen": "127.0.0.1:0", "auth": true})
+	if second["ok"] != true {
+		t.Fatalf("second start: %v", second["error"])
+	}
+	if u, p := e.Credentials(); u != second["username"] || p != second["password"] {
+		t.Fatal("reply credentials differ from the running session's")
+	}
+	addr := second["listen"].(string)
+	c := dialProxy(t, addr)
+	socksGreeting(t, c, 2)
+	if st := socksLogin(t, c, first["username"].(string), first["password"].(string)); st == 0 {
+		t.Fatal("the previous session's login was accepted")
+	}
+	c = dialProxy(t, addr)
+	socksGreeting(t, c, 2)
+	if st := socksLogin(t, c, second["username"].(string), second["password"].(string)); st != 0 {
+		t.Fatalf("the session's own login was refused: %d", st)
+	}
+}
+
 func TestStartLocalDefaultsToAuthentication(t *testing.T) {
 	link := syntheticLink(t)
 	var e engine.Engine

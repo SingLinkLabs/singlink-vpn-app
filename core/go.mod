@@ -3,7 +3,7 @@ module github.com/SingLinkLabs/singlink-vpn-app/core
 go 1.27.4
 
 require (
-	github.com/SingLinkLabs/singlink-protocol v0.0.0-20261119014322-c59a42ddc03e
+	github.com/SingLinkLabs/singlink-protocol v0.0.0-20261119025158-23bf613409fd
 	golang.org/x/sys v0.48.0
 	gvisor.dev/gvisor v0.0.0-20261111202248-15a1a0dd7620
 )

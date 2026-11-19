@@ -356,7 +356,9 @@ class _SettingsPageState extends State<SettingsPage> {
           title: const Text('Local proxy'),
           subtitle: const Text(
             'SOCKS5 or HTTP proxy for manual setup. It requires this username '
-            'and password; a new password is created for each connection.',
+            'and password; a new password is created for each connection. '
+            'TCP works with any such app; UDP needs a SOCKS5 app that states '
+            'its UDP port.',
           ),
         ),
         _CopyTile(label: 'Host', value: localHost, mono: mono),

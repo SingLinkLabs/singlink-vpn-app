@@ -138,6 +138,8 @@ iOS use a real device-wide VPN, see their sections):
   cannot carry credentials, so with "System-wide proxy" on the port has no
   password and Settings says that any app or user account on this computer
   can use it while connected. Changing the switch while connected reconnects.
+  With the login, TCP works with any SOCKS5 or HTTP client; UDP needs a
+  SOCKS5 client that declares its UDP port in UDP ASSOCIATE.
 - If `networksetup` fails, the app stays connected and shows
   "Couldn't set the system proxy. Set SOCKS 127.0.0.1:1080 manually in System
   Settings."

@@ -165,9 +165,12 @@ Extension termination needs a signed device; the Simulator cannot run the tunnel
 ### Protocol pin and handshake diagnostic
 
 The core is pinned to the remediated protocol revision
-`c59a42ddc03e64b9b9686b683dcc32f6263d1c6b` (`core/protocol-revision.txt`, the
-`core/go.mod` pseudo-version with its UTC commit time). That revision addresses
-the VPN Labs protocol follow-up (VPNL-2026-0013 F-02, F-03, F-04, F-10:
+`23bf613409fd836f2da7b2ba75827dc15d63c918` (`core/protocol-revision.txt`, the
+`core/go.mod` pseudo-version with its UTC commit time). That revision hardens
+the local proxy (UDP association bound to the declared client port, login
+dropped on Stop and returned per session by `StartAuth`, one authenticated HTTP
+request per connection; see App F-01 below). The revision before it, c59a42d,
+addresses the VPN Labs protocol follow-up (VPNL-2026-0013 F-02, F-03, F-04, F-10:
 supported Go toolchain and govulncheck, IPv6 special-purpose blocks in the
 default destination policy, the handshake cryptography slot released on panic,
 public commit references); the earlier revision 7822e49 added the node-side
@@ -242,10 +245,23 @@ Remaining: in system-proxy mode the port stays open to local processes by
 design (documented in the UI), also when applying the OS proxy failed (the UI
 then says so and turning the switch off restarts with a password). A copied
 password stays on the clipboard until replaced; the app cannot mark it as
-concealed. In the pinned protocol's SOCKS5 server, UDP ASSOCIATE requires the
-login, but the relay then accepts the first datagram from any port of the
-client's IP address, which on loopback is shared by all local processes; this
-is a protocol-side item for the protocol repository.
+concealed.
+
+Found in our own review of this fix (not VPN Labs findings) and fixed in the
+pinned protocol revision 23bf613: (1) a SOCKS5 UDP ASSOCIATE accepted the first
+datagram from any port of the client's IP address, which on loopback every
+local process shares; the association is now bound to the client port declared
+in the request, and with authentication an undeclared association (port 0, a
+host name or another address) is refused, so UDP needs a SOCKS5 client that
+states its UDP port (TCP works with any client; Settings says so); (2) the
+engine kept the generated login after Stop; it is now dropped on Stop and
+every start creates a new one, and `SingLinkStart` uses the engine's
+`StartAuth`, which returns the session's own login, so a stop or start in
+between cannot make it report another session's credentials; (3) after a plain
+HTTP proxy request the port copied raw bytes both ways, so a pipelined second
+request could reach the origin; only the checked request is forwarded and the
+connection closes after one response. Covered by the protocol's tests and
+`TestStartLocalReturnsTheSessionsOwnCredentials`.
 
 ### App F-02: no test of the exported SingLinkTunStart descriptor contract
 

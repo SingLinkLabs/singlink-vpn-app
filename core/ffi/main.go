@@ -121,10 +121,12 @@ func startLocal(e *engine.Engine, config string) map[string]any {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
 	auth := cfg.Auth == nil || *cfg.Auth
-	if err := e.Start(cfg.Link, cfg.Listen, engine.Options{Auth: auth}); err != nil {
+	// StartAuth returns this session's own credentials; they cannot belong
+	// to a session started or stopped in between.
+	user, pass, err := e.StartAuth(cfg.Link, cfg.Listen, engine.Options{Auth: auth})
+	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	user, pass := e.Credentials()
 	if auth && (user == "" || pass == "") {
 		// Never report an unauthenticated port as protected.
 		e.Stop()
