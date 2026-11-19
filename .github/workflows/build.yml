@@ -73,7 +73,10 @@ jobs:
           python3 ../scripts/protocol_provenance.py verify
           want="go$(sed -n 's/^go //p' go.mod)"
           go version
-          go version | grep -q " $want " || { echo "Go toolchain is not $want from core/go.mod"; exit 1; }
+          case "$(go version)" in
+            *" $want "*) ;;
+            *) echo "Go toolchain is not $want from core/go.mod"; exit 1 ;;
+          esac
           go vet ./...
           go test -race ./...
       - name: govulncheck (pinned; fails on reachable vulnerabilities)
@@ -184,7 +187,7 @@ jobs:
           GOARCH: amd64
           CC: gcc
         run: |
-          gcc --version | head -1
+          gcc --version | sed -n 1p  # sed reads everything: no SIGPIPE under pipefail
           case "$(command -v gcc)" in
             */ProgramData/mingw64/mingw64/bin/gcc*) ;;
             *) echo "gcc is not the pinned MinGW: $(command -v gcc)"; exit 1 ;;
@@ -284,10 +287,13 @@ jobs:
         env:
           NDK_VERSION: '28.2.13676358'
         # sdkmanager verifies the package checksum from Google's repository.
+        # `yes` is killed by SIGPIPE when sdkmanager exits, which fails the
+        # step under pipefail, so its status is ignored; the source.properties
+        # check below is the gate.
         run: |
           sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           if [ ! -d "$sdk/ndk/$NDK_VERSION" ]; then
-            yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+            { yes 2>/dev/null || true; } | "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
           fi
           grep -q "Pkg.Revision = ${NDK_VERSION%.*}" "$sdk/ndk/$NDK_VERSION/source.properties"
           echo "PINNED_NDK=$sdk/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
@@ -455,8 +461,16 @@ jobs:
         # values and never read an existing profile or Keychain item.
         run: |
           flutter build ios --config-only --debug --simulator
-          runtime="$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x["isAvailable"] and x["platform"]=="iOS"]; print(r[-1]["identifier"])')"
-          devtype="$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; d=[x for x in json.load(sys.stdin)["devicetypes"] if x["name"].startswith("iPhone")]; print(d[-1]["identifier"])')"
+          # Newest available iOS runtime and an iPhone type that it supports.
+          read -r runtime devtype < <(xcrun simctl list runtimes -j | python3 -c '
+          import json, sys
+          rs = [r for r in json.load(sys.stdin)["runtimes"]
+                if r["isAvailable"] and r["platform"] == "iOS"
+                and any(d["name"].startswith("iPhone") for d in r.get("supportedDeviceTypes", []))]
+          r = rs[-1]
+          d = [d for d in r["supportedDeviceTypes"] if d["name"].startswith("iPhone")][-1]
+          print(r["identifier"], d["identifier"])')
+          echo "runtime $runtime, device type $devtype"
           udid="$(xcrun simctl create ci-runnertests "$devtype" "$runtime")"
           xcodebuild test -workspace ios/Runner.xcworkspace -scheme Runner \
             -destination "id=$udid" -derivedDataPath build/xcode-test -only-testing:RunnerTests
