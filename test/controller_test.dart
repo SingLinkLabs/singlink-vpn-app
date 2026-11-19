@@ -122,10 +122,13 @@ void main() {
 
     core.usesLocalProxy = false; // Android / iOS device-wide VPN
     await c.connect();
+    // App F-04: routed while connected, no leak-proof claim.
     expect(c.connectedSummary, (
-      'Protected',
-      'Traffic encrypted by SingLinkVPN',
+      'Connected',
+      'Device traffic goes through SingLinkVPN while connected',
     ));
+    expect(c.connectedSummary.$1, isNot('Protected'));
+    expect(c.connectedSummary.$2, isNot(contains('encrypted')));
     await c.disconnect();
   });
 

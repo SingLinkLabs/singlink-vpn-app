@@ -12,6 +12,9 @@ dependencies:
   flutter:
     sdk: flutter
   ffi: ^2.1.4
+  # HMAC-SHA-256 for the opaque profile match key (App F-07). Pure Dart,
+  # maintained by the Dart team; pinned with its hash in pubspec.lock.
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:

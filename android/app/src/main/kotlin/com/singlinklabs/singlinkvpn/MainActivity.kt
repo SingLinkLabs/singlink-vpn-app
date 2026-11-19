@@ -9,17 +9,14 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.embedding.engine.FlutterEngineCache
-import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
     companion object {
-        private const val ENGINE_ID = "main"
-        private const val REQ_VPN = 0x5601
         private const val REQ_NOTIFY = 0x5602
     }
 
@@ -30,53 +27,41 @@ class MainActivity : FlutterActivity() {
     private var waitingNotification = false
 
     /**
-     * One engine per process, kept across Activity instances: the Dart side
-     * owns the VPN session (status poll, revoke handling), so it must keep
-     * running while the foreground service runs without a visible Activity.
+     * One engine per process, kept across Activity instances and shared with
+     * an always-on start of [SingLinkVpnService] ([EngineHost]): the Dart side
+     * owns the VPN session, so it keeps running without a visible Activity.
      */
-    override fun provideFlutterEngine(context: Context): FlutterEngine {
-        val cache = FlutterEngineCache.getInstance()
-        return cache.get(ENGINE_ID)
-            ?: FlutterEngine(context.applicationContext).also { cache.put(ENGINE_ID, it) }
-    }
+    override fun provideFlutterEngine(context: Context): FlutterEngine = EngineHost.obtain(context)
 
     override fun shouldDestroyEngineWithHost(): Boolean = false
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        VpnChannelHandler.activity = this
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VpnBridge.CHANNEL)
-        channel.setMethodCallHandler(::onMethodCall)
-        VpnBridge.channel = channel
-        val credentialStore = CredentialStore(applicationContext)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.singlinklabs.singlinkvpn/secrets")
-            .setMethodCallHandler(credentialStore::handle)
+        EngineHost.configure(flutterEngine, applicationContext)
+        VpnChannelHandler.activity = this
     }
 
     override fun onDestroy() {
         pendingPrepare?.success(false)
         pendingPrepare = null
+        if (VpnChannelHandler.activity === this) VpnChannelHandler.activity = null
         super.onDestroy()
     }
 
-    private fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        when (call.method) {
-            "filesDir" -> result.success(filesDir.absolutePath)
-            "prepare" -> prepare(result)
-            "establish" -> establish(call.argument<Int>("mtu") ?: 1500, result)
-            "stop" -> {
-                pendingPrepare?.success(false); pendingPrepare = null
-                currentVpnRequest = null; waitingNotification = false
-                VpnBridge.stop()
-                result.success(null)
-            }
-            "closeFd" -> { VpnBridge.release(call.argument<Int>("fd") ?: -1); result.success(null) }
-            else -> result.notImplemented()
-        }
+    /** `stop` from Dart: abandon a consent dialog that is still open. */
+    fun cancelConsent() {
+        pendingPrepare?.success(false); pendingPrepare = null
+        currentVpnRequest = null; waitingNotification = false
     }
 
     // ---- consent -----------------------------------------------------------
 
-    private fun prepare(result: MethodChannel.Result) {
+    fun prepare(result: MethodChannel.Result) {
         pendingPrepare?.success(false)
         pendingPrepare = result
         currentVpnRequest = null
@@ -139,23 +124,5 @@ class MainActivity : FlutterActivity() {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == currentVpnRequest) finishPrepare(resultCode == RESULT_OK)
-    }
-
-    // ---- TUN ---------------------------------------------------------------
-
-    private fun establish(mtu: Int, result: MethodChannel.Result) {
-        val generation = VpnBridge.awaitEstablish(result, mtu)
-        val intent = Intent(this, SingLinkVpnService::class.java)
-            .setAction(SingLinkVpnService.ACTION_CONNECT)
-            .putExtra("generation", generation)
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-        } catch (e: Exception) {
-            VpnBridge.establishFailed("service", e.message ?: e.toString())
-        }
     }
 }

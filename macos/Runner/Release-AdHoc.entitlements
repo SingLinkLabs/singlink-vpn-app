@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Release entitlements for builds WITHOUT a development team (ad-hoc:
+	     local and CI builds, never distributable). The hardened runtime is on
+	     (App F-05), but library validation cannot accept ad-hoc signed
+	     frameworks (FlutterMacOS, App, libsinglink), so this variant alone
+	     disables it. A build with DEVELOPMENT_TEAM set (required for
+	     Developer ID) uses Release.entitlements, with library validation on;
+	     scripts/verify_macos_distribution.py rejects this exception. -->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+</dict>
+</plist>

@@ -27,8 +27,24 @@
 //                  closeFd {fd}             → null (close the bridge's own
 //                                            descriptor; once per establish)
 //                  stop                     → null
+//                  takeSystemStart          → bool (an always-on start by
+//                                            the OS is waiting; consumed)
+//                  systemStartFailed        → null (take the placeholder
+//                                            service down)
+//                  openVpnSettings          → bool
 //   Kotlin → Dart  revoked                  (onRevoke: another VPN took
 //                                            over or the user turned it off)
+//                  systemStart              (Android started the service
+//                                            for always-on VPN; Dart then
+//                                            calls takeSystemStart)
+//
+// Always-on VPN (App F-04): when Android starts SingLinkVpnService itself
+// (always-on, including after boot), the service goes foreground and starts
+// this Dart engine without an Activity if needed. ClientController then
+// connects the saved profile through the normal path (protected credential,
+// warning re-check) and the service establishes the TUN for it. With
+// "Block connections without VPN" Android blocks traffic whenever no
+// session is up; that is the platform's kill switch.
 
 import 'dart:async';
 import 'dart:convert';
@@ -112,7 +128,7 @@ class FfiTunCalls implements TunCalls {
 Future<String> _run(String path, String Function(SingLinkBindings b) call) =>
     Isolate.run(() => call(SingLinkBindings.open(path)));
 
-class AndroidVpnCore implements VpnCore {
+class AndroidVpnCore implements VpnCore, SystemStartCore {
   AndroidVpnCore({
     required this.location,
     required this.calls,
@@ -149,13 +165,49 @@ class AndroidVpnCore implements VpnCore {
   @override
   bool get usesLocalProxy => false;
 
+  final _systemStarts = StreamController<void>.broadcast();
+
   Future<dynamic> _onNativeCall(MethodCall call) async {
     if (call.method == 'revoked') {
       // The system already tore the VPN down; stop relaying. The next status
       // poll then reports running:false and the UI shows msgDropped.
       await stop();
+    } else if (call.method == 'systemStart') {
+      _systemStarts.add(null);
     }
     return null;
+  }
+
+  @override
+  Stream<void> get systemStartRequests => _systemStarts.stream;
+
+  @override
+  Future<bool> takeSystemStart() async {
+    try {
+      return await channel.invokeMethod<bool>('takeSystemStart') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> systemStartFailed() async {
+    try {
+      await channel.invokeMethod<void>('systemStartFailed');
+    } catch (_) {
+      // The service has its own timeout.
+    }
+  }
+
+  @override
+  Future<bool> openVpnSettings() async {
+    try {
+      return await channel.invokeMethod<bool>('openVpnSettings') ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   @override
@@ -174,9 +226,14 @@ class AndroidVpnCore implements VpnCore {
     }
   }
 
-  /// [listen] is ignored: there is no local proxy port on Android.
+  /// [listen] and [auth] are ignored: there is no local proxy port on
+  /// Android.
   @override
-  Future<OpResult> start({required String link, required String listen}) async {
+  Future<OpResult> start({
+    required String link,
+    required String listen,
+    bool auth = true,
+  }) async {
     if (!available) {
       return OpResult(false, const CoreUnavailableException().toString());
     }

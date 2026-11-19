@@ -1,6 +1,6 @@
 module github.com/SingLinkLabs/singlink-vpn-app/core
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/SingLinkLabs/singlink-protocol v0.0.0-20261118140236-7822e49cc84e

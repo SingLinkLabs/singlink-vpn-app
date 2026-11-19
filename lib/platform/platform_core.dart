@@ -11,6 +11,7 @@
 
 import 'dart:io';
 
+import '../core/app_store.dart';
 import '../core/singlink_service.dart';
 import '../core/system_proxy.dart';
 import 'android.dart';
@@ -21,6 +22,7 @@ import 'windows.dart';
 /// example Android's files directory).
 Future<void> initPlatform() async {
   if (Platform.isAndroid) await initAndroid();
+  if (Platform.isWindows) await migrateWindowsRoamingData();
 }
 
 VpnCore createPlatformCore() {

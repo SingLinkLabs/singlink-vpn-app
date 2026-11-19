@@ -22,11 +22,21 @@ import android.os.Looper
  * Dart, which passes it to the Go core (SingLinkTunStart). The core relays
  * every packet through the SingLink node on its own duplicate of the
  * descriptor; [VpnBridge] closes the original once that call has returned.
+ *
+ * Always-on VPN (App F-04): Android starts this service itself, without the
+ * app's CONNECT intent, when the user picked SingLinkVPN as the always-on VPN
+ * (also after boot). The service then goes foreground, starts the Dart side
+ * through [EngineHost] if needed and lets it connect the saved profile; the
+ * TUN is established in place. With "Block connections without VPN" Android
+ * blocks all traffic whenever no session is up: that is the kill switch.
  */
 class SingLinkVpnService : VpnService() {
 
     companion object {
         const val ACTION_CONNECT = "com.singlinklabs.singlinkvpn.CONNECT"
+
+        /** How long an always-on start may take before the service gives up. */
+        const val SYSTEM_START_TIMEOUT_MS = 90_000L
         private const val NOTIFICATION_ID = 1
         private const val NOTIFICATION_CHANNEL = "vpn_status"
         private const val SESSION = "SingLinkVPN"
@@ -46,17 +56,79 @@ class SingLinkVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(systemStartTimeout)
         if (VpnBridge.service === this) VpnBridge.service = null
         super.onDestroy()
     }
 
+    private val handler by lazy { Handler(Looper.getMainLooper()) }
+
+    /** An always-on start is waiting for Dart to connect the saved profile. */
+    private var systemStartActive = false
+    private var stopping = false
+
+    private val systemStartTimeout = Runnable {
+        if (systemStartActive) VpnBridge.systemStartFailed()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action != ACTION_CONNECT) {
-            // Started by the system (for example always-on VPN) without the
-            // app: there is no session to resume, so do not stay around.
-            stopSelf()
-            return START_NOT_STICKY
+        val kind = StartKind.classify(intent?.action, VpnBridge.hasSession() || systemStartActive)
+        return when (kind) {
+            StartKind.CONNECT -> connectIntent(intent!!, startId)
+            StartKind.SYSTEM -> { systemStart(); START_NOT_STICKY }
+            // A session (or an always-on start) is already running: keep it.
+            StartKind.ALREADY_RUNNING -> START_NOT_STICKY
+            StartKind.UNKNOWN -> { stopSelf(startId); START_NOT_STICKY }
         }
+    }
+
+    /**
+     * Always-on start without the app: show the foreground notification at
+     * once, then let the Dart side connect the saved profile. If it cannot
+     * (no saved server, locked storage, warnings to review) or does not
+     * answer within [SYSTEM_START_TIMEOUT_MS], the service stops; with
+     * "Block connections without VPN" Android keeps traffic blocked.
+     */
+    private fun systemStart() {
+        try {
+            goForeground(connecting = true)
+        } catch (_: Exception) {
+            stopSelf()
+            return
+        }
+        stopping = false
+        systemStartActive = true
+        handler.removeCallbacks(systemStartTimeout)
+        handler.postDelayed(systemStartTimeout, SYSTEM_START_TIMEOUT_MS)
+        VpnBridge.requestSystemStart()
+        EngineHost.ensureRunningAsync(applicationContext) { VpnBridge.systemStartFailed() }
+    }
+
+    /** True while an always-on start waits for Dart's `establish`. */
+    fun acceptsInPlaceConnect() = systemStartActive && foregrounded && !stopping
+
+    /** Establishes the TUN for Dart's pending `establish` [generation]. */
+    fun connectSession(generation: Long) {
+        if (!VpnBridge.isPending(generation)) return
+        try {
+            goForeground()
+        } catch (e: Exception) {
+            VpnBridge.establishFailed("foreground", e.message ?: e.toString())
+            return
+        }
+        try {
+            val fd = establishTun(VpnBridge.pendingMtu)
+            systemStartActive = false
+            handler.removeCallbacks(systemStartTimeout)
+            VpnBridge.establishDone(fd, generation)
+        } catch (e: Exception) {
+            VpnBridge.establishFailed("establish", e.message ?: e.toString())
+            shutdown()
+        }
+    }
+
+    private fun connectIntent(intent: Intent, startId: Int): Int {
+        stopping = false
         val generation = intent.getLongExtra("generation", -1)
         // Started with startForegroundService: Android requires startForeground
         // even for a start that is already obsolete, or it kills the app.
@@ -114,7 +186,11 @@ class SingLinkVpnService : VpnService() {
         // startForegroundService contract before stopping, or Android crashes
         // the app with ForegroundServiceDidNotStartInTimeException.
         if (!foregrounded) try { goForeground() } catch (_: Exception) {}
+        stopping = true
+        systemStartActive = false
+        handler.removeCallbacks(systemStartTimeout)
         stopForeground(STOP_FOREGROUND_REMOVE)
+        foregrounded = false
         stopSelf()
     }
 
@@ -128,7 +204,11 @@ class SingLinkVpnService : VpnService() {
         }
     }
 
-    private fun goForeground() {
+    /**
+     * Notification text (App F-04): says what the app does while connected,
+     * without claiming leak-proof protection.
+     */
+    private fun goForeground(connecting: Boolean = false) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm.createNotificationChannel(
@@ -137,7 +217,7 @@ class SingLinkVpnService : VpnService() {
                     "VPN status",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "Shown while SingLinkVPN is connected"
+                    description = "Shown while SingLinkVPN is connected or connecting"
                     setShowBadge(false)
                 },
             )
@@ -150,8 +230,8 @@ class SingLinkVpnService : VpnService() {
         }
         val notification = builder
             .setSmallIcon(R.drawable.ic_stat_vpn)
-            .setContentTitle("SingLinkVPN is connected")
-            .setContentText("All traffic is going through SingLinkVPN")
+            .setContentTitle(if (connecting) NotificationText.CONNECTING_TITLE else NotificationText.CONNECTED_TITLE)
+            .setContentText(if (connecting) NotificationText.CONNECTING_TEXT else NotificationText.CONNECTED_TEXT)
             .setContentIntent(openAppIntent())
             .setOngoing(true)
             .setShowWhen(false)
@@ -175,4 +255,36 @@ class SingLinkVpnService : VpnService() {
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
+}
+
+/** How onStartCommand treats a start request. */
+enum class StartKind {
+    /** The app's own start (Dart `establish`). */
+    CONNECT,
+
+    /** Android started the VPN without the app: always-on VPN. */
+    SYSTEM,
+
+    /** A session or an always-on start already runs; nothing to do. */
+    ALREADY_RUNNING,
+
+    /** Anything else without a session: stop. */
+    UNKNOWN;
+
+    companion object {
+        fun classify(action: String?, hasSession: Boolean): StartKind = when {
+            action == SingLinkVpnService.ACTION_CONNECT -> CONNECT
+            hasSession -> ALREADY_RUNNING
+            action == VpnService.SERVICE_INTERFACE -> SYSTEM
+            else -> UNKNOWN
+        }
+    }
+}
+
+/** Notification wording (App F-04), shared with the unit tests. */
+object NotificationText {
+    const val CONNECTED_TITLE = "SingLinkVPN is connected"
+    const val CONNECTED_TEXT = "Device traffic goes through SingLinkVPN while connected"
+    const val CONNECTING_TITLE = "SingLinkVPN is connecting"
+    const val CONNECTING_TEXT = "Started by the Always-on VPN setting"
 }

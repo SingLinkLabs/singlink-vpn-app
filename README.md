@@ -70,8 +70,8 @@ core.
   (`make -C core macos|android|ios|windows`).
 - Bundle id `com.singlinklabs.singlinkvpn`, display name "SingLinkVPN", UI in
   English only.
-- Plugin-free (only `ffi`), so it builds without
-  CocoaPods or Swift Package Manager.
+- Plugin-free (only `ffi` and the pure-Dart `crypto` package), so it builds
+  without CocoaPods or Swift Package Manager.
 - License: Apache-2.0 (see `LICENSE`, `NOTICE`). Redistributions and derivative
   works must keep the source-file copyright headers and the NOTICE attribution
   ("Software provided by the original author SingLinkVPN", "Based on the
@@ -99,8 +99,12 @@ Screenshots: `test/goldens/` (desktop), `docs/screenshots/android/`,
   tunnel). Picking another location while connected switches over.
 - **Settings** (gear): Add server (paste / clipboard), server list with delete,
   "System-wide proxy" (default on), Advanced (local port, default 1080;
-  read-only "Local proxy 127.0.0.1:1080"; Connection log), About (core
-  version, protocol).
+  "Local proxy": with the system proxy off, the host, port and this
+  session's username and password with copy buttons; with it on, a note that
+  the port has no password and is open to every local app and user account;
+  Connection log), About (core version, protocol). Android adds "Always-on
+  VPN" (opens the system VPN settings); iOS adds "Block traffic outside the
+  VPN" (off by default).
 - Errors from the core are shown as short English messages that say what to do
   (`lib/core/error_messages.dart`), with the original text under "Show details".
 - Location names are always English. Chinese node names in server links are
@@ -126,6 +130,14 @@ iOS use a real device-wide VPN, see their sections):
 - The saved settings are also journaled to
   `~/Library/Application Support/com.singlinklabs.singlinkvpn/system-proxy-restore.json`;
   if the app is killed while connected, the next launch restores from it.
+- **Local proxy login (VPN Labs App F-01):** with "System-wide proxy" off the
+  core requires a username and password on the local port (SOCKS5 RFC 1929
+  and HTTP `Proxy-Authorization`). The core generates both with `crypto/rand`
+  for every connection; the app keeps them in memory only (never logged or
+  saved) and shows them in Settings for manual proxy setup. OS proxy settings
+  cannot carry credentials, so with "System-wide proxy" on the port has no
+  password and Settings says that any app or user account on this computer
+  can use it while connected. Changing the switch while connected reconnects.
 - If `networksetup` fails, the app stays connected and shows
   "Couldn't set the system proxy. Set SOCKS 127.0.0.1:1080 manually in System
   Settings."
@@ -255,14 +267,33 @@ in all configurations** (`macos/Runner/DebugProfile.entitlements`,
 `Release.entitlements`): the sandbox would block running `networksetup`, and
 dev builds load the core from outside the bundle. Both keep
 `com.apple.security.network.client` and `com.apple.security.network.server`
-(the core opens a local SOCKS5 listener and outbound connections). For public
-distribution, sign with a Developer ID certificate and notarize.
+(the core opens a local SOCKS5 listener and outbound connections). The
+planned way to sandbox the app is a small privileged helper that owns the
+`networksetup` calls.
+
+Release and Profile builds run with the **hardened runtime**
+(`ENABLE_HARDENED_RUNTIME = YES`; the release build needs no runtime
+exception entitlement). A build is distributable only when
+`python3 scripts/verify_macos_distribution.py SingLinkVPN.app` passes:
+Developer ID Application signature with a secure timestamp on the app and the
+bundled core, hardened runtime, only the reviewed entitlements, a stapled
+notarization ticket and Gatekeeper acceptance. CI builds are ad-hoc signed,
+the gate rejects them, and their artifact is named UNSIGNED.
 
 ## Data
 
 `~/Library/Application Support/com.singlinklabs.singlinkvpn/state.json`
-(display metadata, opaque credential references, selection, port and system-proxy
-switch). Complete links and warning acknowledgements are stored in the native
+(Windows: `%LOCALAPPDATA%\SingLinkLabs\SingLinkVPN\state.json`; display
+names and other display metadata, opaque credential references and match
+keys, selection, port and switches). Since settings version 4 (VPN Labs
+App F-07) it no longer holds a profile's server address, SNI or token
+subject: they are derived from the protected link when needed, and a keyed
+per-installation hash (HMAC-SHA-256) lets a re-import replace a profile whose
+protected record is unreadable. Older files are rewritten only after each
+profile's protected record has been read back. The folder is excluded from
+iCloud/Finder and Time Machine backups (iOS/macOS), Android backup is
+disabled, and on Windows earlier versions' roaming `%APPDATA%` files are moved
+to local AppData at start-up. Complete links and warning acknowledgements are stored in the native
 secret store: Android Keystore AES-GCM ciphertext in no-backup storage, iOS shared
 Keychain (`AfterFirstUnlockThisDeviceOnly`), macOS login Keychain, or Windows
 current-user DPAPI. macOS does not claim iOS accessibility or hardware semantics.
@@ -352,7 +383,7 @@ WinINet proxy at it.
   `ProxyOverride=<local>;localhost;127.*;10.*;172.16.*;192.168.*`, and
   `AutoConfigURL` (PAC) removed while connected. The previous values —
   including which did not exist — are journaled to
-  `%APPDATA%\SingLinkLabs\SingLinkVPN\system-proxy-restore.json` first and
+  `%LOCALAPPDATA%\SingLinkLabs\SingLinkVPN\system-proxy-restore.json` first and
   written back exactly (absent ones deleted) on disconnect, quit, or the next
   launch after a crash. Running programs are notified with
   `InternetSetOptionW` (SETTINGS_CHANGED, REFRESH). All registry access goes
@@ -367,12 +398,17 @@ WinINet proxy at it.
 
 ## CI (`.github/workflows/build.yml`)
 
-Jobs: tests (go vet/test of `core`, `flutter analyze`, `flutter test`;
-goldens informational), windows (MinGW `singlink.dll`, real-registry test,
-`flutter build windows`, zipped Release folder artifact), android
-(`make -C core android` with the runner's NDK, `flutter build apk`), macos
-(`make -C core macos`, `flutter build macos`), ios (`make -C core ios`,
-`flutter build ios --no-codesign`). The app is checked out to
+Jobs: tests (go vet/test of `core` including the C ABI harness, pinned
+`govulncheck`, `flutter analyze`, `flutter test`; goldens informational),
+windows (pinned MinGW `singlink.dll`, real-registry test, `flutter build
+windows`, zipped Release folder artifact), android (C ABI harness on Linux,
+`make -C core android` with the runner's NDK, `flutter build apk`, Kotlin unit
+tests), macos (`make -C core macos`, `flutter build macos`, hardened-runtime
+check, distribution gate must reject the ad-hoc build), ios (`make -C core
+ios`, `flutter build ios --no-codesign`). Runner images are pinned by name
+(`macos-26`, `ubuntu-26.04`, `windows-2022`), every action is pinned to a
+commit SHA, checkouts do not persist the token, Go comes from `core/go.mod`,
+and the Gradle wrapper verifies the distribution's SHA-256. The app is checked out to
 `singlink-vpn-app/` and `SingLinkLabs/singlink-protocol` to
 `singlink-protocol/` so `core/go.mod`'s `../../singlink-protocol` resolves;
 every job checks out the immutable approved protocol revision using the default
@@ -389,7 +425,18 @@ inputs; Android CI artifacts are explicitly named demo debug builds.
   fd to the core with `SingLinkTunStart`. The core works on its own duplicate
   of the fd and always consumes it; the bridge closes its original exactly
   once after the call returns, whatever the result.
-- Foreground service with the notification "SingLinkVPN is connected"; a revoke
+- **Always-on VPN:** the service declares
+  `android.net.VpnService.SUPPORTS_ALWAYS_ON`. When Android starts it without
+  the app (always-on, also after boot) it goes foreground, starts the Dart
+  side without an Activity if needed, and connects the saved profile (last
+  used, else the selected or first one) from the protected store, with the
+  same security-warning check as the power button. If that cannot happen
+  (no server, locked storage, warnings to review) the service stops within
+  90 seconds. Turn on "Block connections without VPN" in Android's VPN
+  settings (Settings > Always-on VPN in the app opens them) to block traffic
+  whenever no session is up; the app itself has no other kill switch.
+- Foreground service with the notification "SingLinkVPN is connected" /
+  "Device traffic goes through SingLinkVPN while connected"; a revoke
   by the system or another VPN stops the core and the app shows "The
   connection dropped. Connect again."
 - Build: `make -C core android` (NDK; Gradle rebuilds missing or source-stale

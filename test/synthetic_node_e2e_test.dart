@@ -78,9 +78,22 @@ void main() {
 
       final port = await _freePort();
       final listen = '127.0.0.1:$port';
+      // App F-01: authentication is the default for the local port.
       final started = await s.start(link: link, listen: listen);
       expect(started.ok, isTrue, reason: started.error);
       addTearDown(s.stop);
+      final login = started.credentials!;
+      expect(login.username.length, greaterThanOrEqualTo(16));
+      expect(login.password.length, greaterThanOrEqualTo(16));
+      expect('$login', isNot(contains(login.password)));
+
+      // A client without the session's credentials is refused.
+      final anon = await Socket.connect(InternetAddress.loopbackIPv4, port);
+      final anonReply = <int>[];
+      final anonDone = anon.listen(anonReply.addAll).asFuture<void>();
+      anon.add([5, 1, 0]);
+      await anonDone.timeout(const Duration(seconds: 15));
+      expect(anonReply.take(2), [5, 0xFF]);
 
       final probe = await s.probe(
         'http://127.0.0.1:${http.port}/generate_204',
@@ -89,16 +102,26 @@ void main() {
       expect(probe.ok, isTrue, reason: probe.error);
       expect(probe.status, 204);
 
-      // A plain SOCKS5 CONNECT through the core's port, as a browser does.
+      // SOCKS5 CONNECT with the session's username and password (RFC 1929),
+      // as an app configured for manual proxy use does.
       final sock = await Socket.connect(InternetAddress.loopbackIPv4, port);
       final bytes = <int>[];
       final done = sock.listen(bytes.addAll).asFuture<void>();
-      sock.add([5, 1, 0]);
+      sock.add([5, 1, 2]);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      sock.add([
+        1,
+        login.username.length,
+        ...login.username.codeUnits,
+        login.password.length,
+        ...login.password.codeUnits,
+      ]);
       await Future<void>.delayed(const Duration(milliseconds: 100));
       sock.add([5, 1, 0, 1, 127, 0, 0, 1, http.port >> 8, http.port & 0xff]);
       sock.add('GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n'.codeUnits);
       await done.timeout(const Duration(seconds: 15));
-      final text = String.fromCharCodes(bytes.skip(12));
+      expect(bytes.take(4), [5, 2, 1, 0], reason: 'method 2, login accepted');
+      final text = String.fromCharCodes(bytes.skip(14));
       expect(text, contains('HTTP/1.'));
       expect(text, contains('synthetic-e2e-ok'));
 

@@ -237,10 +237,38 @@ class _SettingsPageState extends State<SettingsPage> {
                               : 'Not supported on this platform yet',
                         ),
                         value: c.systemProxyEnabled,
-                        onChanged: c.systemProxySupported
+                        // Fixed while connecting or disconnecting, so the
+                        // port's authentication always matches it (F-01).
+                        onChanged: c.systemProxySupported && !c.busy
                             ? c.setSystemProxy
                             : null,
                       ),
+                      if (c.systemStartSupported)
+                        ListTile(
+                          leading: const Icon(Icons.shield_moon_outlined),
+                          title: const Text('Always-on VPN'),
+                          subtitle: const Text(
+                            'Android can start SingLinkVPN by itself. To block '
+                            'traffic whenever the VPN is not connected, turn on '
+                            'Always-on VPN and Block connections without VPN in '
+                            'Android settings.',
+                          ),
+                          trailing: const Icon(Icons.open_in_new_rounded),
+                          onTap: c.openVpnSettings,
+                        ),
+                      if (c.blockOutsideTunnelSupported)
+                        SwitchListTile(
+                          secondary: const Icon(Icons.block_rounded),
+                          title: const Text('Block traffic outside the VPN'),
+                          subtitle: const Text(
+                            'Asks iOS to send all traffic through the tunnel, '
+                            'including connections it would otherwise keep '
+                            'outside. Local network devices stay reachable. '
+                            'Applies from the next connection.',
+                          ),
+                          value: c.blockOutsideTunnel,
+                          onChanged: c.setBlockOutsideTunnel,
+                        ),
                     ],
                   ),
                   const _Section('Advanced'),
@@ -259,12 +287,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           enabled: !locked,
                           onTap: _editPort,
                         ),
-                        ListTile(
-                          leading: const Icon(Icons.lan_outlined),
-                          title: const Text('Local proxy'),
-                          subtitle: const Text('SOCKS5, for manual setup'),
-                          trailing: SelectableText(c.listen, style: mono),
-                        ),
+                        ..._localProxyTiles(mono),
                       ],
                       ListTile(
                         leading: const Icon(Icons.receipt_long_outlined),
@@ -321,12 +344,70 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// App F-01: what another app needs to use the local port, and whether
+  /// the port is open to everyone on this computer.
+  List<Widget> _localProxyTiles(TextStyle? mono) {
+    final cs = Theme.of(context).colorScheme;
+    final login = c.proxyCredentials;
+    if (c.isConnected && login != null) {
+      return [
+        ListTile(
+          leading: const Icon(Icons.lan_outlined),
+          title: const Text('Local proxy'),
+          subtitle: const Text(
+            'SOCKS5 or HTTP proxy for manual setup. It requires this username '
+            'and password; a new password is created for each connection.',
+          ),
+        ),
+        _CopyTile(label: 'Host', value: localHost, mono: mono),
+        _CopyTile(label: 'Port', value: '${c.port}', mono: mono),
+        _CopyTile(label: 'Username', value: login.username, mono: mono),
+        _CopyTile(
+          label: 'Password',
+          value: login.password,
+          mono: mono,
+          secret: true,
+        ),
+      ];
+    }
+    if (c.localProxyOpen) {
+      return [
+        ListTile(
+          leading: Icon(Icons.warning_amber_rounded, color: cs.error),
+          title: const Text('Local proxy has no password'),
+          subtitle: Text(
+            'The system proxy cannot use a password, so while you are connected '
+            'any app or user account on this computer can use ${c.listen}. '
+            'Turn off System-wide proxy to require a password.',
+          ),
+          trailing: SelectableText(c.listen, style: mono),
+        ),
+      ];
+    }
+    return [
+      ListTile(
+        leading: const Icon(Icons.lan_outlined),
+        title: const Text('Local proxy'),
+        subtitle: Text(
+          c.localProxyNeedsAuth
+              ? 'SOCKS5 or HTTP, for manual setup. A username and password are '
+                    'created when you connect.'
+              : 'No password while System-wide proxy is on: when connected, any '
+                    'app or user account on this computer can use it.',
+        ),
+        trailing: SelectableText(c.listen, style: mono),
+      ),
+    ];
+  }
+
   Widget _serverTile(Profile p) {
     final loc = locationFor(p.displayName);
     final cs = Theme.of(context).colorScheme;
     final expiry = p.expiresAt == null
         ? 'No expiry'
         : (p.isExpired ? 'Expired' : 'Expires ${formatDate(p.expiresAt!)}');
+    // The server address is not stored in settings (F-07); it is shown once
+    // derived from the protected link.
     final host = p.server.contains(':')
         ? p.server.substring(0, p.server.lastIndexOf(':'))
         : p.server;
@@ -334,13 +415,72 @@ class _SettingsPageState extends State<SettingsPage> {
       leading: FlagBadge(flag: loc.flag, size: 38),
       title: Text(p.displayName),
       subtitle: Text(
-        '$host · $expiry',
+        host.isEmpty ? expiry : '$host · $expiry',
         style: TextStyle(color: p.isExpired ? cs.error : null),
       ),
       trailing: IconButton(
         tooltip: 'Delete',
         icon: const Icon(Icons.delete_outline_rounded),
         onPressed: () => _delete(p),
+      ),
+    );
+  }
+}
+
+/// One labelled value with a copy button; [secret] values are masked until
+/// revealed. Nothing here is logged or persisted.
+class _CopyTile extends StatefulWidget {
+  const _CopyTile({
+    required this.label,
+    required this.value,
+    required this.mono,
+    this.secret = false,
+  });
+  final String label;
+  final String value;
+  final TextStyle? mono;
+  final bool secret;
+
+  @override
+  State<_CopyTile> createState() => _CopyTileState();
+}
+
+class _CopyTileState extends State<_CopyTile> {
+  bool _revealed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final hidden = widget.secret && !_revealed;
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.only(left: 72, right: 8),
+      title: Text(widget.label),
+      subtitle: Text(hidden ? '•' * 12 : widget.value, style: widget.mono),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.secret)
+            IconButton(
+              tooltip: hidden ? 'Show ${widget.label}' : 'Hide ${widget.label}',
+              icon: Icon(
+                hidden
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+              ),
+              onPressed: () => setState(() => _revealed = !_revealed),
+            ),
+          IconButton(
+            tooltip: 'Copy ${widget.label}',
+            icon: const Icon(Icons.copy_rounded),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: widget.value));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('${widget.label} copied')));
+            },
+          ),
+        ],
       ),
     );
   }

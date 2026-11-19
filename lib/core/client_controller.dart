@@ -76,6 +76,14 @@ class ClientController extends ChangeNotifier {
 
   /// Latency of the connected server (SingLinkProbe), null until measured.
   int? latencyMs;
+
+  /// App F-01: login the core generated for this session's local proxy port,
+  /// in memory only (never logged or saved). Null while disconnected and in
+  /// system-proxy mode, where the port has no password.
+  ProxyCredentials? proxyCredentials;
+
+  /// Whether the running session's local port requires [proxyCredentials].
+  bool? _sessionAuth;
   bool measuring = false;
 
   final List<LogEntry> logs = [];
@@ -104,6 +112,28 @@ class ClientController extends ChangeNotifier {
   String get listen => _state.listen;
   bool get systemProxyEnabled => _state.systemProxy;
   bool get systemProxySupported => systemProxy != null;
+
+  /// App F-01: the local port gets a per-session username and password
+  /// unless the OS system proxy uses it (OS proxy settings cannot carry
+  /// credentials). Device-wide VPN cores have no local port.
+  bool get localProxyNeedsAuth =>
+      core.usesLocalProxy && !(systemProxySupported && _state.systemProxy);
+
+  /// True while connected with a local port that has no password: every
+  /// process and user account on this computer can use it.
+  bool get localProxyOpen =>
+      isConnected && core.usesLocalProxy && _sessionAuth == false;
+
+  /// iOS "Block traffic outside the VPN" (App F-04).
+  bool get blockOutsideTunnel => _state.blockOutsideTunnel;
+  bool get blockOutsideTunnelSupported {
+    final c = core;
+    return c is RoutingPolicyCore &&
+        (c as RoutingPolicyCore).supportsBlockOutsideTunnel;
+  }
+
+  /// Android: the OS can start the VPN (always-on), see [SystemStartCore].
+  bool get systemStartSupported => core is SystemStartCore;
   bool get autoSelect => _state.autoSelect;
   bool get coreAvailable => core.available;
   bool get busy =>
@@ -115,7 +145,13 @@ class ClientController extends ChangeNotifier {
   /// desktop only apps that use the system proxy (or the local proxy port).
   (String, String) get connectedSummary {
     if (!core.usesLocalProxy) {
-      return ('Protected', 'Traffic encrypted by SingLinkVPN');
+      // App F-04: routed while connected; no claim of leak-proof protection
+      // (that needs Android's "Block connections without VPN" or the iOS
+      // option, and is not something the app can verify from here).
+      return (
+        'Connected',
+        'Device traffic goes through SingLinkVPN while connected',
+      );
     }
     if (systemProxySupported && systemProxyEnabled && proxyWarning == null) {
       return ('Protected', 'System proxy on — apps using it are protected');
@@ -188,6 +224,71 @@ class ClientController extends ChangeNotifier {
       log('Core library libsinglink.dylib not found', LogLevel.error);
     }
     _notify();
+    if (!_storageBlocked) unawaited(_hydrateDetails());
+    final c = core;
+    if (c is SystemStartCore) {
+      final starts = c as SystemStartCore;
+      _systemStarts = starts.systemStartRequests.listen(
+        (_) => unawaited(_handleSystemStart()),
+      );
+      unawaited(_handleSystemStart());
+    }
+  }
+
+  StreamSubscription<void>? _systemStarts;
+
+  /// Android always-on VPN (App F-04): the OS started the VPN service without
+  /// the app. Connect the saved profile exactly like the power button would
+  /// (protected credential, warning re-check); if that cannot happen, tell
+  /// the platform so it takes its placeholder service down.
+  Future<void> _handleSystemStart() async {
+    final c = core;
+    if (c is! SystemStartCore) return;
+    final starts = c as SystemStartCore;
+    if (!await starts.takeSystemStart()) return;
+    if (_disposed || _shutdown) return;
+    if (isConnected) return; // the running session satisfies it
+    if (busy) {
+      // A user connect or disconnect is in progress and decides the state;
+      // release the placeholder (Android keeps it if a session is set up).
+      await starts.systemStartFailed();
+      return;
+    }
+    log('Started by Android (always-on VPN)');
+    await connect();
+    if (!isConnected) await starts.systemStartFailed();
+  }
+
+  /// F-07: connection details are no longer kept in the settings file. Derive
+  /// them for display (server host, unnamed profiles) from each protected
+  /// link, in memory only. Profiles whose record cannot be read keep showing
+  /// their name; connecting them reports the problem.
+  Future<void> _hydrateDetails() async {
+    if (!core.available) return;
+    for (final p in List.of(_state.profiles)) {
+      if (_disposed || _shutdown) return;
+      if (p.server.isNotEmpty) continue;
+      try {
+        final credential = await store.readCredential(p);
+        final parsed = await core.parseLink(credential.link);
+        final details = parsed.profile;
+        if (!parsed.ok || details == null) continue;
+        await _withState(() async {
+          final i = _state.profiles.indexWhere(
+            (q) => q.id == p.id && q.secretRef == p.secretRef,
+          );
+          if (i < 0 || _state.profiles[i].server.isNotEmpty) return;
+          _state.profiles[i] = _state.profiles[i].withDetails(
+            server: details.server,
+            sni: details.sni,
+            subject: details.subject,
+          );
+        });
+      } catch (_) {
+        // Locked or missing record: shown by name; connect explains.
+      }
+    }
+    _notify();
   }
 
   /// Settings could not be loaded; connecting and editing stay blocked until
@@ -203,6 +304,7 @@ class ClientController extends ChangeNotifier {
       _storageBlocked = false;
       error = null;
       log('Protected settings loaded');
+      unawaited(_hydrateDetails());
     } catch (_) {
       error = const FriendlyError(msgStorageBlocked);
     }
@@ -291,14 +393,20 @@ class ClientController extends ChangeNotifier {
         // same server replaces the broken entry in place. A locked store still
         // fails below, because the new protected write cannot succeed.
         String? replaces;
+        final key = matchKeyFor(
+          _state.matchSalt,
+          profile.server,
+          profile.subject,
+        );
         for (final existing in _state.profiles) {
           final String? existingLink;
           try {
             existingLink = (await store.readCredential(existing)).link;
           } on SecretStoreException {
+            // F-07: matched by the opaque key, not a stored address.
             if (replaces == null &&
-                existing.server == profile.server &&
-                existing.subject == profile.subject) {
+                key.isNotEmpty &&
+                existing.matchKey == key) {
               replaces = existing.id;
             }
             continue;
@@ -317,6 +425,7 @@ class ClientController extends ChangeNotifier {
           final old = candidate.profiles[index];
           candidate.profiles[index] = Profile(
             id: old.id,
+            matchKey: key,
             link: profile.link,
             name: profile.name,
             server: profile.server,
@@ -400,6 +509,15 @@ class ClientController extends ChangeNotifier {
     final generation = _generation;
     if (!await _editState((next) => next.systemProxy = on)) return;
     if (!_current(generation) || !isConnected) return;
+    if (core.usesLocalProxy && _sessionAuth != localProxyNeedsAuth) {
+      // App F-01: the port's authentication is fixed when the core starts.
+      // Reconnect so turning the system proxy off never leaves an open port
+      // (and turning it on gets a port the OS proxy settings can use).
+      log('Reconnecting to apply the local proxy setting');
+      await disconnect();
+      await connect();
+      return;
+    }
     if (on) {
       await _applySystemProxy();
     } else {
@@ -407,6 +525,24 @@ class ClientController extends ChangeNotifier {
       proxyWarning = null;
     }
     _notify();
+  }
+
+  /// iOS: applies from the next connect (the OS reads it when the tunnel
+  /// configuration is saved).
+  Future<void> setBlockOutsideTunnel(bool on) async {
+    if (!await _editState((next) => next.blockOutsideTunnel = on)) return;
+    log(
+      on
+          ? 'Traffic outside the VPN will be blocked from the next connection'
+          : 'Traffic outside the VPN will no longer be blocked from the next connection',
+    );
+  }
+
+  /// Android: opens the system VPN settings (always-on, kill switch).
+  Future<bool> openVpnSettings() async {
+    final c = core;
+    if (c is! SystemStartCore) return false;
+    return (c as SystemStartCore).openVpnSettings();
   }
 
   /// Only while disconnected. Returns an error message or null.
@@ -484,12 +620,18 @@ class ClientController extends ChangeNotifier {
       log('Connecting to "${profile.displayName}"...');
       _nativeOwner = generation;
       final native = core;
+      final auth = localProxyNeedsAuth;
       final res = native is ProtectedProfileCore
           ? await (native as ProtectedProfileCore).startProtected(
               reference: profile.secretRef,
               listen: _state.listen,
+              blockOutsideTunnel: _state.blockOutsideTunnel,
             )
-          : await native.start(link: credential.link, listen: _state.listen);
+          : await native.start(
+              link: credential.link,
+              listen: _state.listen,
+              auth: auth,
+            );
       if (!_current(generation)) {
         await _cleanupObsolete(generation);
         return;
@@ -501,7 +643,26 @@ class ClientController extends ChangeNotifier {
         log('Connection failed', LogLevel.error);
         return;
       }
-      if (_state.systemProxy) await _applySystemProxy();
+      if (native.usesLocalProxy && auth && res.credentials == null) {
+        // Fail closed: never present an unauthenticated port as the
+        // password-protected one the user asked for.
+        await _cleanupObsolete(generation);
+        if (_current(generation)) {
+          error = const FriendlyError(
+            'The local proxy could not be protected with a password. Try again.',
+          );
+          _resetDisconnected();
+        }
+        return;
+      }
+      _sessionAuth = native.usesLocalProxy ? auth : null;
+      proxyCredentials = auth ? res.credentials : null;
+      // The OS proxy is pointed only at an unauthenticated port started for
+      // it, and not if the switch changed while starting (reconciled below).
+      final useSystemProxy = native.usesLocalProxy
+          ? !auth && !localProxyNeedsAuth
+          : _state.systemProxy;
+      if (useSystemProxy) await _applySystemProxy();
       if (!_current(generation)) {
         await _cleanupObsolete(generation);
         return;
@@ -525,6 +686,10 @@ class ClientController extends ChangeNotifier {
       _startPolling();
       unawaited(_fetchExitIp());
       unawaited(measureLatency());
+      if (native.usesLocalProxy && auth != localProxyNeedsAuth) {
+        // The system-proxy switch changed while the core was starting.
+        unawaited(_reconcileProxyMode(completed.future));
+      }
     } on SecretStoreException {
       if (_current(generation)) {
         error = const FriendlyError(
@@ -544,6 +709,17 @@ class ClientController extends ChangeNotifier {
       if (!completed.isCompleted) completed.complete();
       _notify();
     }
+  }
+
+  /// App F-01: restarts a session whose local-port authentication no longer
+  /// matches the system-proxy switch (changed during the start).
+  Future<void> _reconcileProxyMode(Future<void> started) async {
+    await started;
+    if (_disposed || _shutdown || !isConnected || !core.usesLocalProxy) return;
+    if (_sessionAuth == localProxyNeedsAuth) return;
+    log('Reconnecting to apply the local proxy setting');
+    await disconnect();
+    await connect();
   }
 
   Future<void> _cleanupObsolete(int generation) async {
@@ -718,6 +894,8 @@ class ClientController extends ChangeNotifier {
     latencyMs = null;
     measuring = false;
     proxyWarning = null;
+    proxyCredentials = null;
+    _sessionAuth = null;
     status = CoreStatus.idle;
     _notify();
   }
@@ -831,6 +1009,7 @@ class ClientController extends ChangeNotifier {
 
   @override
   void dispose() {
+    unawaited(_systemStarts?.cancel());
     _disposed = true;
     _shutdown = true;
     ++_generation;

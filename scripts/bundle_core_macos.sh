@@ -51,10 +51,13 @@ missing_core() {
   exit 0
 }
 
+# A secure timestamp is required for notarization; ad-hoc signing has none.
+timestamp_flag() { if [[ "$1" == "-" ]]; then echo "--timestamp=none"; else echo "--timestamp"; fi; }
+
 sign_dylib() { # $1 = dylib, $2 = identity
   local id="$2"
   if [[ -z "$id" ]]; then id="-"; fi
-  codesign --force --sign "$id" --timestamp=none "$1"
+  codesign --force --sign "$id" "$(timestamp_flag "$id")" --options runtime "$1"
 }
 
 # Xcode only re-signs the .app when one of its own tracked inputs changed. On
@@ -72,7 +75,7 @@ reseal_app() {
   [[ -z "$id" ]] && id="-"
   local ent="${TARGET_TEMP_DIR:-}/${WRAPPER_NAME}.xcent"
   [[ -f "$ent" ]] || ent="${SRCROOT:-}/${CODE_SIGN_ENTITLEMENTS:-}"
-  local args=(--force --sign "$id" --timestamp=none)
+  local args=(--force --sign "$id" "$(timestamp_flag "$id")")
   [[ -f "$ent" ]] && args+=(--entitlements "$ent")
   [[ "${ENABLE_HARDENED_RUNTIME:-NO}" == "YES" ]] && args+=(--options runtime)
   codesign "${args[@]}" "$app"
@@ -112,12 +115,21 @@ APP="$APP_DIR/build/macos/Build/Products/$CONFIG/SingLinkVPN.app"
 [[ -f "$LIB_SRC" ]] || missing_core
 
 ID="${CODESIGN_IDENTITY:--}"
+# Ad-hoc release builds cannot pass library validation (see
+# macos/Runner/Release-AdHoc.entitlements); identity-signed ones keep it.
+if [[ "$CONFIG" == "Release" && "$ID" == "-" ]]; then
+  ENT="$APP_DIR/macos/Runner/Release-AdHoc.entitlements"
+fi
 mkdir -p "$APP/Contents/Frameworks"
 cp -f "$LIB_SRC" "$APP/Contents/Frameworks/$LIB_NAME"
 chmod 755 "$APP/Contents/Frameworks/$LIB_NAME"
 sign_dylib "$APP/Contents/Frameworks/$LIB_NAME" "$ID"
 # Contents changed, so the outer signature must be regenerated. Nested
 # frameworks are already signed by the Flutter build; no --deep needed.
-codesign --force --sign "$ID" --timestamp=none --entitlements "$ENT" "$APP"
+# Release and Profile run with the hardened runtime (App F-05), like the
+# Xcode build settings of the Runner target.
+RUNTIME=()
+[[ "$CONFIG" != "Debug" ]] && RUNTIME=(--options runtime)
+codesign --force --sign "$ID" "$(timestamp_flag "$ID")" "${RUNTIME[@]}" --entitlements "$ENT" "$APP"
 codesign --verify --strict "$APP"
 echo "[singlink] bundled $(lipo -archs "$APP/Contents/Frameworks/$LIB_NAME" 2>/dev/null || echo '?') $LIB_NAME into $APP"

@@ -97,19 +97,41 @@ func SingLinkParseLink(link *C.char) (res *C.char) {
 //export SingLinkStart
 func SingLinkStart(config *C.char) (res *C.char) {
 	defer guard(&res)
+	return out(startLocal(&eng, C.GoString(config)))
+}
+
+// startLocal starts the local SOCKS5/HTTP proxy port for config:
+//
+//	{"link":"singlink://...","listen":"127.0.0.1:1080","auth":true}
+//
+// "auth" defaults to true: the engine then requires a random username and
+// password (crypto/rand, new for every start, held only in memory) on every
+// SOCKS5 and HTTP proxy request, so other local processes and users cannot
+// relay through the tunnel. The reply carries them for the app to show; it
+// never logs or stores them. Only an explicit "auth":false (the desktop
+// system-proxy mode: OS proxy settings cannot carry credentials) leaves
+// the loopback port open to every local process.
+func startLocal(e *engine.Engine, config string) map[string]any {
 	var cfg struct {
 		Link   string `json:"link"`
 		Listen string `json:"listen"`
-		Auth   bool   `json:"auth"`
+		Auth   *bool  `json:"auth"`
 	}
-	if err := json.Unmarshal([]byte(C.GoString(config)), &cfg); err != nil {
-		return fail(err)
+	if err := json.Unmarshal([]byte(config), &cfg); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	if err := eng.Start(cfg.Link, cfg.Listen, engine.Options{Auth: cfg.Auth}); err != nil {
-		return fail(err)
+	auth := cfg.Auth == nil || *cfg.Auth
+	if err := e.Start(cfg.Link, cfg.Listen, engine.Options{Auth: auth}); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	user, pass := eng.Credentials()
-	return out(map[string]any{"ok": true, "username": user, "password": pass})
+	user, pass := e.Credentials()
+	if auth && (user == "" || pass == "") {
+		// Never report an unauthenticated port as protected.
+		e.Stop()
+		return map[string]any{"ok": false, "error": "local proxy authentication could not be enabled"}
+	}
+	st := e.Status()
+	return map[string]any{"ok": true, "listen": st.Listen, "auth": auth, "username": user, "password": pass}
 }
 
 //export SingLinkStop

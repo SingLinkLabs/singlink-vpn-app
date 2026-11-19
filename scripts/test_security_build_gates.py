@@ -164,4 +164,127 @@ class WorkflowHardeningTests(unittest.TestCase):
         windows = self.jobs()['windows']
         self.assertRegex(windows, r'run: flutter test\n')
 
+class FollowUpHardeningTests(unittest.TestCase):
+    """VPN Labs follow-up (2026-11-19): App F-03, F-05, F-06, F-08."""
+    def setUp(self):
+        import re
+        self.re = re
+        self.root = HERE.parent
+        self.text = (self.root / '.github/workflows/build.yml').read_text()
+    def test_runner_images_are_pinned(self):
+        runs_on = self.re.findall(r'runs-on: (\S+)', self.text)
+        self.assertEqual(len(runs_on), 5)
+        for image in runs_on:
+            self.assertNotIn('latest', image)
+            self.assertRegex(image, r'^(macos-\d+|ubuntu-\d+\.\d+|windows-\d{4})$')
+    def test_every_checkout_drops_the_token(self):
+        steps = self.text.split('- uses: actions/checkout@')[1:]
+        self.assertEqual(len(steps), 10)
+        for step in steps:
+            self.assertIn('persist-credentials: false', step.split('\n      - ', 1)[0])
+    def test_go_toolchain_and_govulncheck_are_pinned(self):
+        gomod = (self.root / 'core/go.mod').read_text()
+        version = self.re.search(r'^go (\d+)\.(\d+)\.(\d+)$', gomod, self.re.M)
+        self.assertIsNotNone(version)
+        self.assertGreaterEqual(tuple(map(int, version.groups())), (1, 27, 4))  # GO-2026-6859
+        self.assertEqual(self.text.count('go-version-file: singlink-vpn-app/core/go.mod'), 5)
+        self.assertRegex(self.text, r'go install golang.org/x/vuln/cmd/govulncheck@v\d+\.\d+\.\d+\n')
+        self.assertNotRegex(self.text, r'govulncheck@(latest|master|main)')
+        self.assertIn('/bin/govulncheck" ./...', self.text)
+        # Every shipped core target is scanned: macOS, iOS, Android, Windows.
+        self.assertIn('GOOS=ios GOARCH=arm64 CGO_ENABLED=1', self.text)
+        self.assertIn('GOOS=android GOARCH=arm64 CGO_ENABLED=1', self.text)
+        self.assertIn('go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...', self.text)
+    def test_android_ndk_and_pub_lockfile_are_pinned(self):
+        makefile = (self.root / 'core/Makefile').read_text()
+        pinned = self.re.search(r"NDK_VERSION: '([\d.]+)'", self.text).group(1)
+        self.assertIn('ndk/' + pinned, makefile)
+        self.assertNotIn('ANDROID_NDK_LATEST_HOME', self.text)
+        self.assertNotRegex(self.text, r'flutter pub get(?! --enforce-lockfile)')
+    def test_mingw_is_pinned(self):
+        self.assertRegex(self.text, r"MINGW_VERSION: '\d+\.\d+\.\d+'")
+        self.assertIn('choco install mingw --version $env:MINGW_VERSION', self.text)
+        self.assertNotRegex(self.text, r'choco install mingw(?! --version)')
+    def test_gradle_distribution_is_checksummed(self):
+        props = (self.root / 'android/gradle/wrapper/gradle-wrapper.properties').read_text()
+        self.assertRegex(props, r'(?m)^distributionSha256Sum=[0-9a-f]{64}$')
+        self.assertRegex(props, r'(?m)^distributionUrl=https\\://services\.gradle\.org/')
+    def test_native_tests_run_in_ci(self):
+        self.assertGreaterEqual(self.text.count("SINGLINK_REQUIRE_CABI_TEST: '1'"), 2)
+        self.assertIn(':app:testDebugUnitTest', self.text)
+    def test_macos_release_has_hardened_runtime_and_a_distribution_gate(self):
+        pbx = (self.root / 'macos/Runner.xcodeproj/project.pbxproj').read_text()
+        for name in ('Release', 'Profile'):
+            block = self.re.search(r'/\* ' + name + r' \*/ = \{\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbaseConfigurationReference = '
+                                   r'[0-9A-F]+ /\* AppInfo\.xcconfig \*/;.*?\n\t\t\};', pbx, self.re.S)
+            self.assertIsNotNone(block, name)
+            self.assertIn('ENABLE_HARDENED_RUNTIME = YES;', block.group(0), name)
+        self.assertIn('scripts/verify_macos_distribution.py', self.text)
+        self.assertIn('runtime', self.text.split('Hardened runtime and distribution gate', 1)[1].split('- name:', 1)[0])
+    def test_packet_tunnel_logs_no_public_detail(self):
+        for path in list((self.root / 'ios').rglob('*.swift')) + list((self.root / 'macos').rglob('*.swift')) + \
+                list((self.root / 'apple').rglob('*.swift')):
+            text = path.read_text()
+            for call in self.re.findall(r'os_log\((.*?)\)\n', text, self.re.S):
+                # Every public object/string argument must be an error category.
+                public = len(self.re.findall(r'%\{public\}[@s]', call))
+                self.assertLessEqual(public, call.count('errorCategory('), f'{path.name}: public string in os_log')
+            self.assertNotRegex(text, r'Logger\(|NSLog\(|print\(', path.name)
+
+class MacDistributionGateTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('macgate', HERE / 'verify_macos_distribution.py')
+        self.gate = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.gate)
+    ADHOC = ('Executable=/x/SingLinkVPN.app/Contents/MacOS/SingLinkVPN\n'
+             'CodeDirectory v=20500 size=1 flags=0x10002(adhoc,runtime) hashes=1+7 location=embedded\n'
+             'Signature=adhoc\nTeamIdentifier=not set\n')
+    DEVID = ('CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+7 location=embedded\n'
+             'Authority=Developer ID Application: Example Org (ABCDE12345)\n'
+             'Authority=Developer ID Certification Authority\nAuthority=Apple Root CA\n'
+             'Timestamp=19 Nov 2026 at 10:00:00\nTeamIdentifier=ABCDE12345\n')
+    def test_adhoc_build_is_rejected(self):
+        problems = self.gate.check_signature(self.gate.parse_codesign_details(self.ADHOC), 'app', True)
+        self.assertTrue(any('ad-hoc' in p for p in problems))
+        self.assertTrue(any('team' in p for p in problems))
+    def test_developer_id_with_runtime_and_timestamp_passes_signature_checks(self):
+        details = self.gate.parse_codesign_details(self.DEVID)
+        self.assertEqual(self.gate.check_signature(details, 'app', True), [])
+        no_runtime = self.gate.parse_codesign_details(self.DEVID.replace('0x10000(runtime)', '0x0(none)'))
+        self.assertTrue(self.gate.check_signature(no_runtime, 'app', True))
+        no_ts = self.gate.parse_codesign_details(self.DEVID.replace('Timestamp=19 Nov 2026 at 10:00:00\n', ''))
+        self.assertTrue(self.gate.check_signature(no_ts, 'app', True))
+    def test_entitlements_and_gatekeeper(self):
+        self.assertEqual(self.gate.check_entitlements({'com.apple.security.app-sandbox': False,
+                                                       'com.apple.security.network.client': True}), [])
+        self.assertTrue(self.gate.check_entitlements({'com.apple.security.cs.disable-library-validation': True}))
+        self.assertTrue(self.gate.check_entitlements({'com.apple.security.cs.allow-jit': True}))
+        self.assertEqual(self.gate.check_gatekeeper('x: accepted\nsource=Notarized Developer ID\n', 0), [])
+        self.assertTrue(self.gate.check_gatekeeper('x: rejected\nsource=no usable signature\n', 3))
+        self.assertTrue(self.gate.check_gatekeeper('x: accepted\nsource=Developer ID\n', 0))
+    def test_release_entitlements_keep_library_validation(self):
+        import plistlib
+        runner = HERE.parent / 'macos/Runner'
+        strict = plistlib.loads((runner / 'Release.entitlements').read_bytes())
+        adhoc = plistlib.loads((runner / 'Release-AdHoc.entitlements').read_bytes())
+        self.assertEqual(self.gate.check_entitlements(strict), [])
+        self.assertNotIn('com.apple.security.cs.disable-library-validation', strict)
+        self.assertNotIn('com.apple.security.cs.allow-jit', strict)
+        self.assertTrue(self.gate.check_entitlements(adhoc), 'the ad-hoc variant must never pass the gate')
+        pbx = (HERE.parent / 'macos/Runner.xcodeproj/project.pbxproj').read_text()
+        # Team builds (Developer ID) resolve to Release.entitlements; only a
+        # team-less (ad-hoc) build gets the -AdHoc suffix.
+        self.assertIn('CODE_SIGN_ENTITLEMENTS = "Runner/Release$(SINGLINK_ADHOC_ENTITLEMENTS_$(DEVELOPMENT_TEAM)).entitlements";', pbx)
+        self.assertEqual(pbx.count('SINGLINK_ADHOC_ENTITLEMENTS_ = "-AdHoc";'), 1)
+    def test_unreadable_entitlements_fail_closed(self):
+        self.assertTrue(self.gate.entitlement_problems(0, ''))
+        self.assertTrue(self.gate.entitlement_problems(1, '<?xml version="1.0"?><plist><dict/></plist>'))
+        self.assertTrue(self.gate.entitlement_problems(0, '<?xml version="1.0"?><plist><array/></plist>'))
+        ok = ('<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>'
+              '<key>com.apple.security.network.client</key><true/></dict></plist>')
+        self.assertEqual(self.gate.entitlement_problems(0, ok), [])
+    def test_gate_rejects_a_folder_that_is_not_an_app(self):
+        with tempfile.TemporaryDirectory(prefix='synthetic-mac-gate-') as tmp:
+            self.assertTrue(self.gate.verify(tmp))
+
 if __name__ == '__main__': unittest.main()

@@ -8,7 +8,7 @@
 // connected. The app drives it over the MethodChannel implemented in
 // ios/Runner/SingLinkVpnPlugin.swift (NETunnelProviderManager):
 //
-//   start {link, server}   stop   status   probe {url, timeoutMs}
+//   start {reference, blockOutsideTunnel}   stop   status   probe {url, timeoutMs}
 //   exitIP {timeoutMs}                     -> JSON strings in the core format
 //   onStatus (native -> Dart)              {"state":"connected","running":true}
 //
@@ -29,7 +29,8 @@ const iosVpnChannel = MethodChannel('com.singlinklabs.singlinkvpn/vpn');
 
 VpnCore createIosCore() => IosTunnelCore(ffi: SingLinkService.locate());
 
-class IosTunnelCore implements VpnCore, ProtectedProfileCore {
+class IosTunnelCore
+    implements VpnCore, ProtectedProfileCore, RoutingPolicyCore {
   /// [ffi] answers version / parseLink (the core linked into the app).
   IosTunnelCore({required VpnCore ffi, MethodChannel channel = iosVpnChannel})
     : _ffi = ffi,
@@ -68,20 +69,30 @@ class IosTunnelCore implements VpnCore, ProtectedProfileCore {
   Future<OpResult> start({
     required String link,
     required String listen,
+    bool auth = true,
   }) async =>
       const OpResult(false, 'A protected credential reference is required.');
+
+  /// includeAllNetworks / enforceRoutes (App F-04), off by default: see
+  /// docs/security-remediation.md for why it is a user choice.
+  @override
+  bool get supportsBlockOutsideTunnel => true;
 
   @override
   Future<OpResult> startProtected({
     required String reference,
     required String listen,
+    bool blockOutsideTunnel = false,
   }) async {
     if (!isSecretReference(reference)) {
       return const OpResult(false, 'Protected credentials are missing.');
     }
     final generation = ++_generation;
     final reply = OpResult.fromJson(
-      await _call('start', {'reference': reference}),
+      await _call('start', {
+        'reference': reference,
+        'blockOutsideTunnel': blockOutsideTunnel,
+      }),
     );
     return generation == _generation
         ? reply

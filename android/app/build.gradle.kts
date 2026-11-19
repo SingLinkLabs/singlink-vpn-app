@@ -53,6 +53,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    testOptions {
+        // JVM unit tests (src/test) replace every Android call on the paths
+        // they cover; anything else in the android.jar stubs returns defaults.
+        unitTests.isReturnDefaultValues = true
+    }
+
     // libsinglink.so (Go core with the TUN bridge) for every ABI, built by
     // `make -C core android` into core/build/android/<abi>/.
     sourceSets {
@@ -91,8 +97,9 @@ flutter {
     source = "../.."
 }
 
-// Test-only dependencies, pinned to verified stable Google Maven releases.
+// Test-only dependencies, pinned to verified stable releases.
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }

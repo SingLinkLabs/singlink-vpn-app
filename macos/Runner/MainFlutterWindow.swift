@@ -15,5 +15,6 @@ class MainFlutterWindow: NSWindow {
     SecretStorePlugin.register(with: flutterViewController.registrar(forPlugin: "SecretStorePlugin"))
 
     super.awakeFromNib()
+    AppDelegate.excludeAppDataFromBackup()
   }
 }

@@ -44,6 +44,12 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="vpn" />
+            <!-- Always-on VPN (App F-04): the service starts without the app's
+                 CONNECT intent and connects the saved profile; the user can
+                 add "Block connections without VPN" in Android settings. -->
+            <meta-data
+                android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
+                android:value="true" />
         </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

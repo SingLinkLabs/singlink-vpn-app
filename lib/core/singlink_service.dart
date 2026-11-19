@@ -29,7 +29,17 @@ abstract class VpnCore {
 
   Future<CoreVersion> version();
   Future<ParseLinkResult> parseLink(String link);
-  Future<OpResult> start({required String link, required String listen});
+
+  /// Starts a session. For a local proxy core, [auth] requires the per-session
+  /// username and password returned in [OpResult.credentials] on the local
+  /// port (App F-01); only the desktop system-proxy mode passes false, since
+  /// OS proxy settings cannot carry credentials. Device-wide VPN cores have
+  /// no local port and ignore it.
+  Future<OpResult> start({
+    required String link,
+    required String listen,
+    bool auth = true,
+  });
   Future<OpResult> stop();
   Future<CoreStatus> status();
   Future<ProbeResult> probe(String url, {int timeoutMs = 8000});
@@ -38,10 +48,36 @@ abstract class VpnCore {
 
 /// Platforms whose OS configuration must only receive an opaque secret ref.
 abstract interface class ProtectedProfileCore {
+  /// [blockOutsideTunnel] asks the OS to keep all traffic in the tunnel
+  /// (iOS: includeAllNetworks + enforceRoutes, local network excluded).
   Future<OpResult> startProtected({
     required String reference,
     required String listen,
+    bool blockOutsideTunnel = false,
   });
+}
+
+/// A device-wide VPN whose OS can keep traffic from bypassing the tunnel
+/// (iOS includeAllNetworks); Settings shows the option only for these.
+abstract interface class RoutingPolicyCore {
+  bool get supportsBlockOutsideTunnel;
+}
+
+/// A device-wide VPN the OS can start without the app's UI (Android
+/// always-on VPN). The controller then connects the saved profile.
+abstract interface class SystemStartCore {
+  /// Fires when the OS asks for a start while the app is running.
+  Stream<void> get systemStartRequests;
+
+  /// True exactly once per OS start request that nobody handled yet.
+  Future<bool> takeSystemStart();
+
+  /// The OS start could not proceed (no profile, locked storage, warnings to
+  /// review...): the platform takes its placeholder service down.
+  Future<void> systemStartFailed();
+
+  /// Opens the OS VPN settings (always-on, "Block connections without VPN").
+  Future<bool> openVpnSettings();
 }
 
 /// Thrown when a call is made while the core library is not loaded.
@@ -94,11 +130,15 @@ class SingLinkService implements VpnCore {
   }
 
   @override
-  Future<OpResult> start({required String link, required String listen}) =>
-      _op(() {
-        final cfg = jsonEncode({'link': link, 'listen': listen});
-        return _json((b) => b.start(cfg));
-      });
+  Future<OpResult> start({
+    required String link,
+    required String listen,
+    bool auth = true,
+  }) => _op(() {
+    // "auth" is always explicit; the core also defaults it to true.
+    final cfg = jsonEncode({'link': link, 'listen': listen, 'auth': auth});
+    return _json((b) => b.start(cfg));
+  });
 
   @override
   Future<OpResult> stop() => _op(() => _json((b) => b.stop()));

@@ -7,7 +7,8 @@
 // NETunnelProviderManager.
 //
 // Every method answers a JSON string in the core's format:
-//   start {reference}   -> {"ok":true} | {"ok":false,"error":".."}
+//   start {reference, blockOutsideTunnel}
+//                          -> {"ok":true} | {"ok":false,"error":".."}
 //   stop                   -> {"ok":true}
 //   status                 -> SingLinkStatus JSON (+ "state"); running=false
 //                             once iOS reports the VPN as disconnected
@@ -60,7 +61,10 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
     let timeoutMs = args["timeoutMs"] as? Int ?? 8000
     switch call.method {
     case "start":
-      start(reference: args["reference"] as? String ?? "", reply)
+      start(
+        reference: args["reference"] as? String ?? "",
+        blockOutsideTunnel: args["blockOutsideTunnel"] as? Bool ?? false,
+        reply)
     case "stop":
       stop(reply)
     case "status":
@@ -77,7 +81,7 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
 
   // MARK: - Commands
 
-  private func start(reference: String, _ reply: @escaping (String) -> Void) {
+  private func start(reference: String, blockOutsideTunnel: Bool, _ reply: @escaping (String) -> Void) {
     guard !migratingProviderConfiguration else {
       return reply(Self.json(["ok": false, "error": "protected credential migration is still running; retry shortly"]))
     }
@@ -111,6 +115,7 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
       proto.serverAddress = "SingLinkVPN"
       proto.providerConfiguration = ["secretRef": reference]
       proto.disconnectOnSleep = false
+      Self.applyRoutingPolicy(proto, blockOutsideTunnel: blockOutsideTunnel)
       m.protocolConfiguration = proto
       m.localizedDescription = "SingLinkVPN"
       m.isEnabled = true
@@ -179,6 +184,26 @@ final class SingLinkVpnPlugin: NSObject, FlutterPlugin {
         }
       }
     }
+  }
+
+  /// App F-04: the "Block traffic outside the VPN" setting (off by default).
+  ///
+  /// includeAllNetworks asks iOS to send all traffic through the tunnel,
+  /// including connections it would otherwise keep outside it; Apple exempts
+  /// the packet tunnel provider's own connections (here: the core's
+  /// connection to the node), so the tunnel can still reach its server.
+  /// excludeLocalNetworks keeps local network devices (printers, AirPlay)
+  /// reachable. enforceRoutes stays off: with includeAllNetworks it adds
+  /// nothing, and with our default routes alone it would also capture the
+  /// local network. On-demand rules are not used: a user Disconnect would
+  /// have to disable them first, which cannot be verified without a device.
+  /// Off is the default because the effect on Apple services and on a tunnel
+  /// that fails to start (no traffic until the VPN is turned off) needs
+  /// device testing first.
+  static func applyRoutingPolicy(_ proto: NETunnelProviderProtocol, blockOutsideTunnel: Bool) {
+    proto.includeAllNetworks = blockOutsideTunnel
+    proto.excludeLocalNetworks = blockOutsideTunnel
+    proto.enforceRoutes = false
   }
 
   /// What stopIfActive does for a connection in [status].

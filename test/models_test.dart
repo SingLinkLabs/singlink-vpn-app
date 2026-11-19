@@ -108,7 +108,13 @@ void main() {
       ),
     );
     final s = await store.load();
-    expect(s.profiles.single.server, 'hk1.example.com:443');
+    // F-07: connection details are not read back from the settings file.
+    expect(s.profiles.single.server, isEmpty);
+    expect(s.profiles.single.name, p.name);
+    final saved = await store.file.readAsString();
+    for (final detail in ['hk1.example.com', 'cdn.example.com', 'a1b2c3']) {
+      expect(saved, isNot(contains(detail)));
+    }
     expect(s.selectedId, p.id);
     expect(s.autoSelect, isFalse);
     expect(s.lastUsedId, p.id);

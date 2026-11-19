@@ -30,6 +30,13 @@ class FakeCore implements VpnCore {
   );
 
   String? startError;
+
+  /// The `auth` flag of every start, in order.
+  final authRequests = <bool>[];
+
+  /// Simulates a core that started without returning credentials.
+  bool withholdCredentials = false;
+  int sessions = 0;
   bool running = false;
   int up = 0;
   int down = 0;
@@ -63,11 +70,25 @@ class FakeCore implements VpnCore {
   }
 
   @override
-  Future<OpResult> start({required String link, required String listen}) async {
+  Future<OpResult> start({
+    required String link,
+    required String listen,
+    bool auth = true,
+  }) async {
     calls.add('start $listen');
+    authRequests.add(auth);
     if (startError != null) return OpResult(false, startError!);
     running = true;
-    return const OpResult(true);
+    if (!usesLocalProxy || !auth || withholdCredentials) {
+      return const OpResult(true);
+    }
+    sessions++;
+    // Synthetic per-session values, as the core returns them.
+    return OpResult(
+      true,
+      '',
+      ProxyCredentials('synthetic-user-$sessions', 'synthetic-pass-$sessions'),
+    );
   }
 
   /// When set, stop fails and the session keeps running (iOS stop timeout).

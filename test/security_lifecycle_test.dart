@@ -18,7 +18,11 @@ class HeldCore extends FakeCore {
   final startEntered = Completer<void>();
   int starts = 0;
   @override
-  Future<OpResult> start({required String link, required String listen}) async {
+  Future<OpResult> start({
+    required String link,
+    required String listen,
+    bool auth = true,
+  }) async {
     starts++;
     if (!startEntered.isCompleted) startEntered.complete();
     await startGate?.future;

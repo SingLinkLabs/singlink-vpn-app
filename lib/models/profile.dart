@@ -10,6 +10,12 @@ import 'security_warning.dart';
 /// The fields mirror the `profile` object returned by `SingLinkParseLink`; the
 /// raw [link] exists only during import/migration. Committed profiles hold an
 /// opaque [secretRef]; native start receives the protected value when needed.
+///
+/// App F-07: [server], [sni] and [subject] are never written to the ordinary
+/// settings file. They are known at import and, after a restart, derived
+/// again from the protected link (ClientController hydrates them); the
+/// settings file keeps display metadata plus the opaque [secretRef] and
+/// [matchKey].
 class Profile {
   Profile({
     required this.id,
@@ -26,10 +32,16 @@ class Profile {
     this.maxConns = 0,
     required this.addedAt,
     this.secretRef = '',
+    this.matchKey = '',
     this.acknowledgedWarnings = const [],
   });
 
   final String id;
+
+  /// Opaque, per-installation keyed hash of server and subject
+  /// (AppStore.matchKeyFor). Lets a re-import replace an entry whose
+  /// protected record is unreadable without storing the address or subject.
+  final String matchKey;
   final String link;
   final String secretRef;
   final List<String> acknowledgedWarnings;
@@ -42,6 +54,7 @@ class Profile {
     id: id,
     link: value,
     secretRef: reference,
+    matchKey: matchKey,
     name: name,
     server: server,
     transport: transport,
@@ -80,8 +93,37 @@ class Profile {
   bool get isExpired =>
       expiresAt != null && expiresAt!.isBefore(DateTime.now());
 
-  /// Display name; falls back to the server address when the link has none.
-  String get displayName => name.trim().isEmpty ? server : name.trim();
+  /// Display name; falls back to the server address (once known from the
+  /// protected link) when the link has none.
+  String get displayName => name.trim().isNotEmpty
+      ? name.trim()
+      : (server.isNotEmpty ? server : 'Unnamed server');
+
+  /// Same profile with connection details derived from its protected link
+  /// (memory only) and/or a new [matchKey].
+  Profile withDetails({
+    String? server,
+    String? sni,
+    String? subject,
+    String? matchKey,
+  }) => Profile(
+    id: id,
+    link: link,
+    secretRef: secretRef,
+    matchKey: matchKey ?? this.matchKey,
+    name: name,
+    server: server ?? this.server,
+    transport: transport,
+    sni: sni ?? this.sni,
+    subject: subject ?? this.subject,
+    plan: plan,
+    expiresAt: expiresAt,
+    caps: caps,
+    rateKbps: rateKbps,
+    maxConns: maxConns,
+    addedAt: addedAt,
+    acknowledgedWarnings: acknowledgedWarnings,
+  );
 
   /// Builds a profile from the `profile` object of an `SingLinkParseLink` reply.
   factory Profile.fromCore(
@@ -90,12 +132,14 @@ class Profile {
     String? id,
     DateTime? addedAt,
     String secretRef = '',
+    String matchKey = '',
   }) {
     final now = DateTime.now();
     return Profile(
       id: id ?? newProfileId(),
       link: link.trim(),
       secretRef: secretRef,
+      matchKey: matchKey,
       name: _str(json['name']),
       server: _str(json['server']),
       transport: _str(json['transport']),
@@ -110,15 +154,17 @@ class Profile {
     );
   }
 
-  /// Persistence format (superset of the core's profile object).
+  /// Keys of the core's profile object that identify the server or the
+  /// token and therefore never go into the ordinary settings file (F-07).
+  static const sensitiveKeys = {'server', 'sni', 'subject', 'link'};
+
+  /// Persistence format: display metadata and opaque references only.
   Map<String, dynamic> toJson() => {
     'id': id,
     'secretRef': secretRef,
+    'matchKey': matchKey,
     'name': name,
-    'server': server,
     'transport': transport,
-    'sni': sni,
-    'subject': subject,
     'plan': plan,
     'expiresAt': expiresAt == null
         ? 0
@@ -129,12 +175,16 @@ class Profile {
     'addedAt': addedAt.millisecondsSinceEpoch ~/ 1000,
   };
 
+  /// Reads current and legacy settings entries. Legacy (version 3 and
+  /// earlier) entries may still carry server, sni and subject; AppStore
+  /// migrates them out of the file.
   factory Profile.fromJson(Map<String, dynamic> json) => Profile.fromCore(
     _str(json['link']),
     json,
     id: _str(json['id']).isEmpty ? null : _str(json['id']),
     addedAt: _unix(json['addedAt']),
     secretRef: _str(json['secretRef']),
+    matchKey: _str(json['matchKey']),
   );
 }
 

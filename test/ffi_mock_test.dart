@@ -51,6 +51,10 @@ void main() {
 
   test('service round-trips every SingLink call through FFI', () async {
     if (libPath == null) {
+      // CI sets SINGLINK_REQUIRE_FFI_MOCK so the payload checks cannot skip.
+      if (Platform.environment['SINGLINK_REQUIRE_FFI_MOCK'] == '1') {
+        fail('SINGLINK_REQUIRE_FFI_MOCK=1 but the C mock could not be built');
+      }
       markTestSkipped('no C compiler');
       return;
     }
@@ -78,10 +82,16 @@ void main() {
       (await s.start(link: 'singlink://h', listen: '127.0.0.1:9')).error,
       'bad cfg',
     );
-    expect(
-      (await s.start(link: 'singlink://h', listen: '127.0.0.1:1080')).ok,
-      isTrue,
+    // App F-01: the default start sends {"link","listen","auth":true} and
+    // gets the session's login back.
+    final started = await s.start(
+      link: 'singlink://h',
+      listen: '127.0.0.1:1080',
     );
+    expect(started.ok, isTrue, reason: started.error);
+    expect(started.credentials!.username, 'mock-user-0123456');
+    expect(started.credentials!.password, 'mock-pass-0123456');
+    expect('${started.credentials}', isNot(contains('mock-pass')));
 
     final st = await s.status();
     expect(st.running, isTrue);
@@ -102,5 +112,15 @@ void main() {
 
     expect((await s.stop()).ok, isTrue);
     expect((await s.status()).running, isFalse);
+
+    // System-proxy mode: an explicit "auth":false, and no login.
+    final open = await s.start(
+      link: 'singlink://h',
+      listen: '127.0.0.1:1080',
+      auth: false,
+    );
+    expect(open.ok, isTrue, reason: open.error);
+    expect(open.credentials, isNull);
+    expect((await s.stop()).ok, isTrue);
   });
 }

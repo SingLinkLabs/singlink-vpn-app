@@ -28,8 +28,18 @@ char *SingLinkParseLink(char *link) {
 
 char *SingLinkStart(char *cfg) {
   if (!strstr(cfg, "\"listen\":\"127.0.0.1:1080\"")) return dup("{\"ok\":false,\"error\":\"bad cfg\"}");
-  running = 1;
-  return dup("{\"ok\":true}");
+  // App F-01: the app always states "auth" explicitly; the exact payloads
+  // the Dart side must send are checked here.
+  if (strcmp(cfg, "{\"link\":\"singlink://h\",\"listen\":\"127.0.0.1:1080\",\"auth\":true}") == 0) {
+    running = 1;
+    return dup("{\"ok\":true,\"auth\":true,\"listen\":\"127.0.0.1:1080\","
+               "\"username\":\"mock-user-0123456\",\"password\":\"mock-pass-0123456\"}");
+  }
+  if (strcmp(cfg, "{\"link\":\"singlink://h\",\"listen\":\"127.0.0.1:1080\",\"auth\":false}") == 0) {
+    running = 1;
+    return dup("{\"ok\":true,\"auth\":false,\"listen\":\"127.0.0.1:1080\",\"username\":\"\",\"password\":\"\"}");
+  }
+  return dup("{\"ok\":false,\"error\":\"unexpected start payload\"}");
 }
 
 char *SingLinkStop(void) { running = 0; return dup("{\"ok\":true}"); }

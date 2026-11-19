@@ -189,6 +189,261 @@ stop through the real core against a throwaway loopback node (`core/testnode`,
 fresh keys, no external server) wherever the core library is built, including CI
 on macOS; `real_core_test.dart` against a live node stays optional.
 
+## VPN Labs follow-up (2026-11-19)
+
+Reported by VPN Labs (app audit VPNL-2026-0014, findings App F-01 to F-08;
+follow-up of 2026-11-19 against commit c39ce58, line references from the
+audited commit d955d0e). Each item names the cause, the change, the tests and
+what still needs real devices or the owner's accounts. Passing tests do not
+prove the absence of other defects.
+
+### App F-01 (Low): desktop local proxy without authentication
+
+Cause: `SingLinkService.start` sent only `{"link","listen"}`, and
+`SingLinkStart` mapped the missing `auth` field to `engine.Options{Auth:false}`.
+Any local process, including another user account's, could relay through the
+user's server and token while the app was connected, also when the system
+proxy was switched off.
+
+Fix: the app always states `auth` explicitly and requests it whenever the OS
+system proxy is not used (switch off, or a platform without it). `SingLinkStart`
+in this app's core now defaults a missing `auth` to true and refuses to report
+success if authentication was requested but no credentials exist. The pinned
+engine generates the username and password with `crypto/rand` for each start
+and enforces them for SOCKS5 (RFC 1929) and HTTP (`Proxy-Authorization`). The
+app keeps them in memory only (`ProxyCredentials.toString` is redacted; never
+logged, never in settings) and shows host, port, username and a masked password
+with copy buttons in Settings > Advanced. In system-proxy mode (OS proxy
+settings cannot carry credentials) Settings states that the port has no
+password and any app or user account on the computer can use it while
+connected. Changing the switch while connected reconnects so the port's
+authentication always matches it; the switch is fixed while connecting, and a
+change that still lands during a start is detected before the OS proxy is set
+and reconnects. A start that returns no credentials fails closed and stops the
+core.
+
+Tests: `core/ffi/auth_test.go` (real engine, synthetic loopback node): auth on
+when requested and by default, SOCKS5 without credentials gets method 0xFF,
+wrong username or password refused, HTTP CONNECT without or with wrong
+credentials gets 407, the right ones accepted, new credentials per start,
+explicit `auth:false` open. `core/ffi/cabi_test.go` repeats the refusal through
+the real C ABI. `test/ffi_mock_test.dart` checks the exact JSON payloads through
+Dart FFI; `test/synthetic_node_e2e_test.dart` relays with the login through the
+real core and checks an anonymous client is refused;
+`test/vpnlabs_followup_test.dart` covers the controller (fresh login per
+session, nothing in logs or settings, reconnect on toggle, fail closed) and the
+Settings states.
+
+Remaining: in system-proxy mode the port stays open to local processes by
+design (documented in the UI), also when applying the OS proxy failed (the UI
+then says so and turning the switch off restarts with a password). A copied
+password stays on the clipboard until replaced; the app cannot mark it as
+concealed. In the pinned protocol's SOCKS5 server, UDP ASSOCIATE requires the
+login, but the relay then accepts the first datagram from any port of the
+client's IP address, which on loopback is shared by all local processes; this
+is a protocol-side item for the protocol repository.
+
+### App F-02: no test of the exported SingLinkTunStart descriptor contract
+
+Cause: the Go tests called `tunnel.DupFDDevice` and `startTun` directly; nothing
+called the exported `SingLinkTunStart`/`SingLinkTunStop`, and `VpnBridge` had no
+automated test.
+
+Fix and tests: `core/ffi/cabi_test.go` builds the core as a c-shared library,
+compiles `core/ffi/testdata/cabi_harness.c` against the generated
+`libsinglink.h` and runs it in its own process with real pipe descriptors. For
+malformed config, invalid link, unreachable node, negative and closed
+descriptor numbers, success then `SingLinkTunStop`, success then `SingLinkStop`,
+TUN failure (EOF) handled by the watcher, a busy engine and a Stop during the
+handshake, it checks over the whole descriptor table that the caller's
+descriptor stays open and unchanged, that exactly one close-on-exec duplicate
+exists while the core holds it and none afterwards, and that sentinel
+descriptors are untouched. CI runs it on macOS (`go test -race`) and Linux (the
+Android job) with `SINGLINK_REQUIRE_CABI_TEST=1`, so it cannot silently skip.
+`VpnBridge` now closes descriptors through a replaceable hook;
+`android/app/src/test/.../VpnBridgeTest.kt` (JVM, `testDebugUnitTest` in CI)
+checks that the original is closed exactly once after success and failure,
+never by `stop` or revoke, once by the bridge for a stale or superseded
+establish, never for unknown numbers, and not retried after a failing close.
+
+Remaining: the Android path with a real `VpnService` descriptor and the Apple
+utun path still need device runs.
+
+### App F-03: Go 1.27.3 standard-library vulnerability (GO-2026-6859)
+
+Cause: `core/go.mod` declared `go 1.27.3`; govulncheck v1.10.0 reported
+GO-2026-6859 (net/http) reachable from the loopback test helper
+`core/testnode`. CI did not run govulncheck.
+
+Fix: `go 1.27.4`. Every CI job installs Go from `core/go.mod` and the tests job
+fails if the toolchain differs; a pinned `govulncheck@v1.10.0` step (installed
+through the Go checksum database) fails the build on any reachable
+vulnerability in the core or the pinned protocol.
+
+Tests: govulncheck v1.10.0 with go1.27.3 reports GO-2026-6859 (exit 3); with
+go1.27.4: "No vulnerabilities found". `scripts/test_security_build_gates.py`
+rejects a go directive below 1.27.4 and an unpinned govulncheck.
+
+### App F-04: protection wording broader than the tunnel guarantees
+
+Cause: the mobile connected screen said "Protected · Traffic encrypted by
+SingLinkVPN" and the Android notification "All traffic is going through
+SingLinkVPN", without a kill switch, Android always-on support or iOS
+full-capture options.
+
+Fix: the mobile connected state now reads "Connected · Device traffic goes
+through SingLinkVPN while connected"; the notification reads "SingLinkVPN is
+connected · Device traffic goes through SingLinkVPN while connected"
+(supersedes the mobile wording of A-H03). Android supports always-on VPN:
+the service declares `SUPPORTS_ALWAYS_ON`, handles Android's own start (no
+CONNECT intent) by going foreground, starting the Dart side without an Activity
+if needed and connecting the saved profile from the protected store with the
+same warning check as the power button; it stops itself if that is impossible
+(no server, locked storage, warnings to review) or takes over 90 seconds, and
+it no longer stops a running session when Android repeats the start. Settings
+offers "Always-on VPN", which opens Android's VPN settings, and explains that
+"Block connections without VPN" there is the kill switch. On iOS, Settings
+offers "Block traffic outside the VPN" (off by default): `includeAllNetworks`
+with `excludeLocalNetworks`, so local devices stay reachable. Apple exempts the
+packet tunnel provider's own connections, so the core can still reach its
+node. `enforceRoutes` stays off (redundant with `includeAllNetworks`; with our
+default routes alone it would also capture the local network), and on-demand
+rules are not used (a user Disconnect would have to turn them off first). The
+option is off by default because the effect on Apple services and on a tunnel
+that fails to start (no traffic until the VPN is turned off) needs device
+testing first.
+
+Tests: `test/controller_test.dart` and `test/vpnlabs_followup_test.dart`
+(wording; an OS start connects the saved profile, is handled once, releases the
+service without a profile or with changed warnings), `VpnBridgeTest.kt` (start
+classification, always-on request taken once, notification wording),
+`test/ios_tunnel_core_test.dart` (the option reaches the tunnel),
+`ios/RunnerTests` (`applyRoutingPolicy`; CI now runs RunnerTests on a fresh
+Simulator).
+
+Emulator (Android 16, API 36, debug build): with always-on and "Block
+connections without VPN" set and no saved server, Android started the service
+after boot, it went foreground (VPN exemption), the Dart side started without
+an Activity and the service stopped itself about 15 seconds later, with no
+crash and no service-start timeout. (The Flutter engine is started off the
+service's start call; creating it inside `onStartCommand` tripped the start
+timeout on the slow emulator.)
+
+Remaining: the always-on connect of a saved server and leak tests on real
+devices (always-on with and without lockdown, reboot, network changes, iOS
+with the option on and off) could not be run here.
+
+### App F-05: macOS release without hardened runtime or App Sandbox
+
+Cause: the Runner target set no `ENABLE_HARDENED_RUNTIME`; CI produces ad-hoc
+builds only.
+
+Fix: `ENABLE_HARDENED_RUNTIME = YES` for Release and Profile. A build with a
+development team (required for Developer ID) uses `Release.entitlements`:
+network client/server, sandbox off, no runtime exception, library validation
+on. Library validation cannot accept ad-hoc signed frameworks (verified: an
+ad-hoc hardened build fails to load FlutterMacOS.framework), so a team-less
+ad-hoc build (local and CI, never distributable) selects
+`Release-AdHoc.entitlements`, which adds only
+`com.apple.security.cs.disable-library-validation`; the selection is the build
+setting `Runner/Release$(SINGLINK_ADHOC_ENTITLEMENTS_$(DEVELOPMENT_TEAM))`,
+and the distribution gate rejects that entitlement. The local ad-hoc release
+build shows `flags=0x10002(adhoc,runtime)`, starts and loads the bundled core. `scripts/bundle_core_macos.sh` keeps the
+runtime flag when it re-signs and uses a secure timestamp for non-ad-hoc
+identities. `scripts/verify_macos_distribution.py` is the release gate: it
+refuses to call a build distributable unless the app and the core are signed
+with one team's Developer ID Application certificate with a secure timestamp,
+the hardened runtime is on, only the reviewed entitlements are present, the
+notarization ticket is stapled and Gatekeeper reports a notarized Developer ID
+build. The CI macOS job checks the runtime flag and requires the gate to reject
+its ad-hoc build, which is uploaded as `SingLinkVPN-macos-UNSIGNED-adhoc-ci`.
+
+App Sandbox stays off: the system-proxy mode runs `/usr/sbin/networksetup`,
+which a sandboxed app cannot. The planned path is a small privileged helper
+that owns those calls so the app itself can be sandboxed; it is not part of
+this change.
+
+Remaining: Developer ID signing and notarization need the owner's Apple
+Developer account in the protected release process; no credentials are in the
+repository or CI.
+
+### App F-06: packet tunnel logged core error text as public
+
+Cause: `PacketTunnelProvider.swift` logged start failures and core-stop
+reasons with `%{public}@`.
+
+Fix: both log a fixed public category (`errorCategory`, for example
+`node-unreachable`, `handshake`, `credentials-unavailable`) and the text as
+`%{private}@`. A search of the Swift, Kotlin, Dart, Go and C++ sources found no
+other system logging of hosts, links, tokens, SNI or subjects (the in-app
+connection log stays in memory). A gate test rejects `%{public}@` in any
+`os_log` call without `errorCategory(`, and `NSLog`/`print`/`Logger` in the
+Apple sources.
+
+Remaining: the extension still hands the core's error text to the app through
+the App Group defaults (`lastError`, replaced at the next start) so the app can
+show why the tunnel stopped; that is app-private storage, not a log.
+
+### App F-07: server address, SNI and token subject in the ordinary settings file
+
+Cause: `state.json` stored each profile's `server`, `sni` and `subject` in plain
+JSON next to the protected-credential reference.
+
+Fix: settings version 4 keeps display metadata (name, plan, expiry, limits),
+the opaque `secretRef` and an opaque `matchKey` (HMAC-SHA-256 of server and
+subject with a random per-installation key), never the server, SNI, subject or
+link; a write that would contain them is refused. The details are known at
+import and derived again from the protected link for display after a restart.
+Re-importing a server whose protected record is unreadable still replaces the
+broken entry, matched by `matchKey`. Migration of an older file reads back
+every profile's protected record first; a locked or unavailable store aborts it
+and leaves the file unchanged for a retry; a missing or corrupt record (a
+profile that was already unusable) does not block it. The settings folder is
+excluded from backups on iOS (`isExcludedFromBackup`) and macOS (Time Machine);
+Android backup and device transfer stay disabled; on Windows settings and the
+proxy journal moved from roaming `%APPDATA%` to `%LOCALAPPDATA%`, with the
+earlier files moved at start-up (copy, rename into place, then delete).
+
+Tests: `test/vpnlabs_followup_test.dart` (no server/SNI/subject/link in the
+stored JSON after import, restart derivation, v3 migration with record
+confirmation, locked store keeps the file, missing record then re-import in
+place, per-install match keys, Windows move), `test/models_test.dart`,
+`ios/RunnerTests` (backup exclusion).
+
+Once local settings exist, roaming copies of the app's files (for example
+written again by an older version) are removed at every start, and staging
+files of an interrupted move are cleaned up.
+
+Remaining: copies already in earlier backups, snapshots or roaming profiles
+cannot be removed by the app. The match key's per-installation key is stored
+in the same file, so the key hides server and subject only as far as the token
+subject is not guessable.
+
+### App F-08: build supply-chain hygiene
+
+Cause: floating runner images (`macos-latest`, `ubuntu-latest`), an unpinned
+Chocolatey MinGW fallback, no Gradle distribution checksum, checkouts that
+persisted the job token.
+
+Fix: `macos-26`, `ubuntu-26.04` and `windows-2022`; the Windows job always
+installs the pinned Chocolatey `mingw` 14.2.0 package (its install script
+verifies the download checksum), checks the version, logs the compiler's
+SHA-256 and fails if another `gcc` is first on `PATH`;
+`distributionSha256Sum` for `gradle-8.12-all.zip`, identical to
+services.gradle.org's published `.sha256` and to a local download; every
+checkout sets `persist-credentials: false`; actions stay pinned to commit SHAs.
+`scripts/test_security_build_gates.py` enforces all of these.
+
+Review follow-up: `flutter pub get --enforce-lockfile` everywhere, the Android
+NDK pinned to the Makefile's version (installed with `sdkmanager` if the image
+lacks it) instead of the image's latest, and govulncheck also scans the iOS,
+Android and Windows builds of the core.
+
+Remaining: the Gradle wrapper JAR comes from the pinned Flutter SDK; there is
+no Gradle dependency-verification metadata; the JDK patch release and the
+image's default Xcode are not pinned; runner image contents still change
+within a pinned image name.
+
 ## Protected release signing
 
 Debug/demo builds use only a generated debug identity and must be labelled as such.

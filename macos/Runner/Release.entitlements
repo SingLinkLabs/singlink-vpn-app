@@ -5,7 +5,9 @@
 	<!-- No App Sandbox (direct distribution, not Mac App Store): the app must run
 	     /usr/sbin/networksetup for the system-wide proxy mode. Release builds load
 	     only the core bundled in Contents/Frameworks (no SINGLINK_LIB or
-	     development-path fallback). -->
+	     development-path fallback). Release runs with the hardened runtime and
+	     library validation; builds with a development team (Developer ID) use
+	     this file, team-less ad-hoc builds use Release-AdHoc.entitlements. -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 	<!-- libsinglink opens a local SOCKS5 listener and outbound tunnel connections. -->

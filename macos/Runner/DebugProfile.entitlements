@@ -9,6 +9,11 @@
 	<false/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
+	<!-- Profile builds run with the hardened runtime (App F-05); local builds
+	     are ad-hoc signed, whose frameworks library validation would reject.
+	     Debug and Profile builds are never distributed. -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
 	<!-- libsinglink opens a local SOCKS5 listener and outbound tunnel connections. -->
 	<key>com.apple.security.network.client</key>
 	<true/>

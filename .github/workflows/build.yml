@@ -8,6 +8,10 @@
 #   $GITHUB_WORKSPACE/singlink-protocol/   SingLinkLabs/singlink-protocol
 #
 # Public protocol source is checked out at the immutable reviewed revision.
+# Runner images are selected by name (no -latest labels; GitHub still updates
+# an image's contents within a name), checkouts do not persist the job token,
+# and toolchains are pinned (Go from core/go.mod, govulncheck, Flutter and
+# pubspec.lock, MinGW, the Android NDK, the Gradle distribution checksum).
 name: build
 
 on:
@@ -37,10 +41,11 @@ jobs:
     name: tests (go + flutter)
     permissions:
       contents: read
-    runs-on: macos-latest
+    runs-on: macos-26  # pinned image; change deliberately
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
@@ -50,6 +55,7 @@ jobs:
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
@@ -60,10 +66,27 @@ jobs:
           cache-dependency-path: singlink-vpn-app/core/go.sum
       - name: go vet + go test (core)
         working-directory: singlink-vpn-app/core
+        env:
+          # The C ABI harness (core/ffi/cabi_test.go) must run, not skip.
+          SINGLINK_REQUIRE_CABI_TEST: '1'
         run: |
           python3 ../scripts/protocol_provenance.py verify
+          want="go$(sed -n 's/^go //p' go.mod)"
+          go version
+          go version | grep -q " $want " || { echo "Go toolchain is not $want from core/go.mod"; exit 1; }
           go vet ./...
           go test -race ./...
+      - name: govulncheck (pinned; fails on reachable vulnerabilities)
+        working-directory: singlink-vpn-app/core
+        # `go install` of an exact version is checked against the Go
+        # checksum database. govulncheck exits non-zero when a known
+        # vulnerability is reachable from this module or the pinned protocol.
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
+          "$(go env GOPATH)/bin/govulncheck" -version
+          "$(go env GOPATH)/bin/govulncheck" ./...
+          # The iOS core is built from the same packages for GOOS=ios.
+          GOOS=ios GOARCH=arm64 CGO_ENABLED=1 "$(go env GOPATH)/bin/govulncheck" ./...
       - name: Build core for synthetic parser integration
         run: make -C singlink-vpn-app/core macos
       - name: go vet (core, GOOS=windows)
@@ -75,7 +98,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - working-directory: singlink-vpn-app
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
       - name: Source and signing safety gates
         working-directory: singlink-vpn-app
         run: python3 scripts/test_security_build_gates.py
@@ -84,6 +107,8 @@ jobs:
         run: flutter analyze
       - name: flutter test (all but goldens)
         working-directory: singlink-vpn-app
+        env:
+          SINGLINK_REQUIRE_FFI_MOCK: '1'  # the FFI payload test must not skip
         run: flutter test $(ls test/*_test.dart | grep -v golden_test.dart)
       # Goldens are rendered with the developer's macOS fonts; a different
       # macOS image can shift glyphs by a pixel, so they only warn here.
@@ -109,6 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
@@ -118,6 +144,7 @@ jobs:
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
@@ -126,13 +153,27 @@ jobs:
         with:
           go-version-file: singlink-vpn-app/core/go.mod
           cache-dependency-path: singlink-vpn-app/core/go.sum
-      - name: MinGW-w64 gcc (cgo)
+      - name: MinGW-w64 gcc (cgo), pinned
         shell: pwsh
+        env:
+          MINGW_VERSION: '14.2.0'
+        # Always the pinned Chocolatey package (its install script verifies
+        # the SHA-256 of the download), never whatever gcc the image has.
         run: |
-          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
-            choco install mingw --no-progress -y
-            "C:\ProgramData\mingw64\mingw64\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
-          }
+          choco install mingw --version $env:MINGW_VERSION --no-progress -y --force
+          $bin = "C:\ProgramData\mingw64\mingw64\bin"
+          $v = (& "$bin\gcc.exe" -dumpfullversion).Trim()
+          if ($v -ne $env:MINGW_VERSION) { throw "gcc $v installed, $env:MINGW_VERSION pinned" }
+          "gcc $v sha256 $((Get-FileHash -Algorithm SHA256 "$bin\gcc.exe").Hash)"
+          $bin | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      - name: govulncheck (windows/amd64 build of the core)
+        working-directory: singlink-vpn-app/core
+        env:
+          CGO_ENABLED: '1'
+          CC: gcc
+        # `go run` of an exact version is checked against the Go checksum
+        # database, like `go install` in the other jobs.
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
       - name: Build singlink.dll
         working-directory: singlink-vpn-app/core
         # Same command as `make -C core windows` (core/Makefile), with MinGW
@@ -144,6 +185,10 @@ jobs:
           CC: gcc
         run: |
           gcc --version | head -1
+          case "$(command -v gcc)" in
+            */ProgramData/mingw64/mingw64/bin/gcc*) ;;
+            *) echo "gcc is not the pinned MinGW: $(command -v gcc)"; exit 1 ;;
+          esac
           mkdir -p build/windows
           go build -trimpath -buildmode=c-shared -ldflags='-s -w' -o build/windows/singlink.dll ./ffi
           python ../scripts/protocol_provenance.py record build/windows/singlink.dll
@@ -154,7 +199,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - working-directory: singlink-vpn-app
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
       - name: Windows system proxy tests (fake + real registry)
         working-directory: singlink-vpn-app
         env:
@@ -201,10 +246,11 @@ jobs:
       contents: read
       id-token: write      # build provenance attestation
       attestations: write  # build provenance attestation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04  # pinned image; change deliberately
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
@@ -214,6 +260,7 @@ jobs:
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
@@ -226,11 +273,36 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Build libsinglink.so (NDK)
-        # The runner image ships the Android SDK and NDK; the Makefile's
-        # NDK_BIN defaults to the macOS host toolchain, so point it at Linux.
+      - name: C ABI harness on Linux (descriptor ownership, proxy auth)
+        working-directory: singlink-vpn-app/core
+        env:
+          SINGLINK_REQUIRE_CABI_TEST: '1'
         run: |
-          NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          python3 ../scripts/protocol_provenance.py verify
+          go test -count=1 -run 'CABI|StartLocal|TunStart' ./ffi
+      - name: Android NDK (pinned, same as core/Makefile)
+        env:
+          NDK_VERSION: '28.2.13676358'
+        # sdkmanager verifies the package checksum from Google's repository.
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ ! -d "$sdk/ndk/$NDK_VERSION" ]; then
+            yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          fi
+          grep -q "Pkg.Revision = ${NDK_VERSION%.*}" "$sdk/ndk/$NDK_VERSION/source.properties"
+          echo "PINNED_NDK=$sdk/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - name: govulncheck (android/arm64 build of the core)
+        working-directory: singlink-vpn-app/core
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
+          GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
+            CC="$PINNED_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang" \
+            "$(go env GOPATH)/bin/govulncheck" ./...
+      - name: Build libsinglink.so (NDK)
+        # The Makefile's NDK_BIN defaults to the macOS host toolchain, so
+        # point it at the pinned NDK's Linux toolchain.
+        run: |
+          NDK="$PINNED_NDK"
           echo "NDK: $NDK"
           make -C singlink-vpn-app/core android \
             ANDROID_NDK_HOME="$NDK" \
@@ -244,8 +316,11 @@ jobs:
       - name: flutter build apk
         working-directory: singlink-vpn-app
         run: |
-          flutter pub get
+          flutter pub get --enforce-lockfile
           flutter build apk --debug
+      - name: Kotlin unit tests (VpnBridge descriptor ownership, always-on start)
+        working-directory: singlink-vpn-app/android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: SingLinkVPN-android-DEMO-debug-apk
@@ -266,10 +341,11 @@ jobs:
       contents: read
       id-token: write      # build provenance attestation
       attestations: write  # build provenance attestation
-    runs-on: macos-latest
+    runs-on: macos-26  # pinned image; change deliberately
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
@@ -279,6 +355,7 @@ jobs:
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
@@ -300,8 +377,21 @@ jobs:
           # scripts/bundle_core_macos.sh copies this dylib into the .app.
           SINGLINK_CORE_LIB: ${{ github.workspace }}/singlink-vpn-app/core/build/macos/libsinglink.dylib
         run: |
-          flutter pub get
+          flutter pub get --enforce-lockfile
           flutter build macos --release
+      - name: Hardened runtime and distribution gate
+        working-directory: singlink-vpn-app
+        # The release build must carry the hardened runtime. CI signs ad hoc
+        # only, so the Developer ID + notarization gate must refuse it: the
+        # artifact below is named UNSIGNED and is never a release.
+        run: |
+          app=build/macos/Build/Products/Release/SingLinkVPN.app
+          codesign --verify --deep --strict "$app"
+          codesign -dv --verbose=4 "$app" 2>&1 | tee codesign.txt
+          grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]*\(.*runtime.*\)' codesign.txt
+          if python3 scripts/verify_macos_distribution.py "$app"; then
+            echo "the distribution gate accepted an ad-hoc CI build"; exit 1
+          fi
       - name: Zip
         working-directory: singlink-vpn-app/build/macos/Build/Products/Release
         run: ditto -c -k --keepParent SingLinkVPN.app "$GITHUB_WORKSPACE/SingLinkVPN-macos-UNSIGNED-adhoc-ci.zip"
@@ -324,10 +414,11 @@ jobs:
     name: ios (no codesign)
     permissions:
       contents: read
-    runs-on: macos-latest
+    runs-on: macos-26  # pinned image; change deliberately
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           path: singlink-vpn-app
       - name: Read approved protocol revision
         id: protocol-pin
@@ -337,6 +428,7 @@ jobs:
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           ref: ${{ steps.protocol-pin.outputs.revision }}
           repository: SingLinkLabs/singlink-protocol
           path: singlink-protocol
@@ -355,5 +447,17 @@ jobs:
       - name: flutter build ios
         working-directory: singlink-vpn-app
         run: |
-          flutter pub get
+          flutter pub get --enforce-lockfile
           flutter build ios --release --no-codesign
+      - name: iOS RunnerTests on a fresh Simulator
+        working-directory: singlink-vpn-app
+        # A new, throwaway Simulator: the tests generate their own synthetic
+        # values and never read an existing profile or Keychain item.
+        run: |
+          flutter build ios --config-only --debug --simulator
+          runtime="$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x["isAvailable"] and x["platform"]=="iOS"]; print(r[-1]["identifier"])')"
+          devtype="$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; d=[x for x in json.load(sys.stdin)["devicetypes"] if x["name"].startswith("iPhone")]; print(d[-1]["identifier"])')"
+          udid="$(xcrun simctl create ci-runnertests "$devtype" "$runtime")"
+          xcodebuild test -workspace ios/Runner.xcworkspace -scheme Runner \
+            -destination "id=$udid" -derivedDataPath build/xcode-test -only-testing:RunnerTests
+          xcrun simctl delete "$udid"

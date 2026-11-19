@@ -15,14 +15,41 @@ int _int(Object? v) {
 String _str(Object? v) => v == null ? '' : v.toString();
 
 /// `{"ok":true}` | `{"ok":false,"error":".."}` from `SingLinkStart` / `SingLinkStop`.
+///
+/// A `SingLinkStart` with authentication also returns the session's local
+/// proxy login (`username`, `password`) in [credentials].
 class OpResult {
-  const OpResult(this.ok, [this.error = '']);
+  const OpResult(this.ok, [this.error = '', this.credentials]);
 
   final bool ok;
   final String error;
 
-  factory OpResult.fromJson(Map<String, dynamic> json) =>
-      OpResult(json['ok'] == true, _str(json['error']));
+  /// Per-session local proxy login; null when the port is unauthenticated.
+  final ProxyCredentials? credentials;
+
+  factory OpResult.fromJson(Map<String, dynamic> json) {
+    final user = _str(json['username']);
+    final pass = _str(json['password']);
+    return OpResult(
+      json['ok'] == true,
+      _str(json['error']),
+      user.isNotEmpty && pass.isNotEmpty ? ProxyCredentials(user, pass) : null,
+    );
+  }
+}
+
+/// Username and password the core generated (crypto/rand) for one local proxy
+/// session (App F-01). They exist only in memory for that session: never
+/// logged, never written to settings, and replaced on every connect.
+class ProxyCredentials {
+  const ProxyCredentials(this.username, this.password);
+  final String username;
+  final String password;
+
+  /// Never reveals the values, so an accidental interpolation into a log
+  /// line or error message cannot leak them.
+  @override
+  String toString() => 'ProxyCredentials(<redacted>)';
 }
 
 /// `SingLinkVersion`:

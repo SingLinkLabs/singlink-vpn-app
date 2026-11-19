@@ -27,6 +27,32 @@ final class RunnerTests: XCTestCase {
     XCTAssertNil(SingLinkVpnPlugin.stopError(final: .invalid))
   }
 
+  // App F-04: "Block traffic outside the VPN" maps to includeAllNetworks
+  // with the local network kept reachable; off by default.
+  func testRoutingPolicy() {
+    let proto = NETunnelProviderProtocol()
+    SingLinkVpnPlugin.applyRoutingPolicy(proto, blockOutsideTunnel: false)
+    XCTAssertFalse(proto.includeAllNetworks)
+    XCTAssertFalse(proto.enforceRoutes)
+    SingLinkVpnPlugin.applyRoutingPolicy(proto, blockOutsideTunnel: true)
+    XCTAssertTrue(proto.includeAllNetworks)
+    XCTAssertTrue(proto.excludeLocalNetworks)
+    XCTAssertFalse(proto.enforceRoutes)
+    SingLinkVpnPlugin.applyRoutingPolicy(proto, blockOutsideTunnel: false)
+    XCTAssertFalse(proto.includeAllNetworks)
+  }
+
+  // App F-07: the settings folder is excluded from device backups.
+  func testAppDataIsExcludedFromBackup() throws {
+    let base = FileManager.default.temporaryDirectory
+      .appendingPathComponent("synthetic-backup-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: base) }
+    XCTAssertTrue(AppDelegate.excludeAppDataFromBackup(base: base))
+    let dir = base.appendingPathComponent("com.singlinklabs.singlinkvpn", isDirectory: true)
+    let values = try dir.resourceValues(forKeys: [.isExcludedFromBackupKey])
+    XCTAssertEqual(values.isExcludedFromBackup, true)
+  }
+
   func testInvalidReferenceFailsBeforeKeychainAccess() throws {
     XCTAssertFalse(CredentialKeychain.valid("../invalid"))
     XCTAssertThrowsError(try CredentialKeychain.read("../invalid"))

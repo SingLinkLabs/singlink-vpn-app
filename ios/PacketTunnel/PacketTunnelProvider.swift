@@ -51,7 +51,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     SharedState.setLastError(nil)
     let operation = beginSession(stopping: false)
     let fail = { (message: String) in
-      os_log("start failed: %{public}@", log: log, type: .error, message)
+      // Only a fixed category is public; the core's text can name the
+      // server, so it stays private (redacted in the unified log).
+      os_log("start failed (%{public}@): %{private}@", log: log, type: .error,
+             Self.errorCategory(message), message)
       SharedState.setLastError(message)
       completionHandler(TunnelError(message))
     }
@@ -176,7 +179,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
       if status["running"] as? Bool == false {
         let reason = (status["lastError"] as? String).flatMap { $0.isEmpty ? nil : $0 }
           ?? "the tunnel stopped"
-        os_log("core stopped: %{public}@", log: log, type: .error, reason)
+        os_log("core stopped (%{public}@): %{private}@", log: log, type: .error,
+               Self.errorCategory(reason), reason)
         SharedState.setLastError(reason)
         self.watchdog?.cancel()
         self.watchdog = nil
@@ -186,6 +190,25 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     watchdog?.cancel()
     watchdog = timer
     timer.resume()
+  }
+
+  /// A fixed, non-identifying label for an error text, safe to log publicly.
+  /// The text itself (which may contain a host, address or token detail) is
+  /// only ever logged as private.
+  static func errorCategory(_ message: String) -> String {
+    let m = message.lowercased()
+    if m.contains("cancel") { return "cancelled" }
+    if m.contains("protected credential") { return "credentials-unavailable" }
+    if m.contains("security warning") { return "warning-review-required" }
+    if m.contains("tunnel settings") { return "network-settings" }
+    if m.contains("utun") || m.contains("tun descriptor") { return "tun-descriptor" }
+    if m.contains("expired") || m.contains("token") { return "token" }
+    if m.contains("reject") || m.contains("handshake") || m.contains("key mismatch") { return "handshake" }
+    if m.contains("reach node") || m.contains("dial") || m.contains("timeout") || m.contains("refused") {
+      return "node-unreachable"
+    }
+    if m.contains("tunnel stopped") { return "tunnel-stopped" }
+    return "core-error"
   }
 
   // MARK: - Network settings

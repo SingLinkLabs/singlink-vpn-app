@@ -9,6 +9,8 @@
 
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'credential_migration.dart';
 import 'secret_store.dart';
 import 'dart:io';
@@ -27,6 +29,35 @@ String? validatePort(String s) {
   return null;
 }
 
+/// Current settings file format. Version 4 (App F-07) no longer stores a
+/// profile's server address, SNI or token subject.
+const stateVersion = 4;
+
+/// A new random per-installation key for [matchKeyFor].
+String newMatchSalt() {
+  final random = Random.secure();
+  return base64UrlEncode(
+    List<int>.generate(32, (_) => random.nextInt(256)),
+  ).replaceAll('=', '');
+}
+
+bool _validSalt(Object? v) =>
+    v is String && RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(v);
+
+/// Opaque match key of a server/subject pair: HMAC-SHA-256 keyed with this
+/// installation's random [salt]. It identifies "the same server and token"
+/// for re-import without revealing either, and differs between installs.
+/// Empty when neither is known.
+String matchKeyFor(String salt, String server, String subject) {
+  if (server.isEmpty && subject.isEmpty) return '';
+  final key = base64Url.decode(base64Url.normalize(salt));
+  final mac = Hmac(
+    sha256,
+    key,
+  ).convert(utf8.encode('singlink-profile-match/v1\n$server\n$subject'));
+  return base64UrlEncode(mac.bytes).replaceAll('=', '');
+}
+
 class AppState {
   AppState({
     List<Profile>? profiles,
@@ -35,7 +66,10 @@ class AppState {
     this.lastUsedId,
     this.port = defaultPort,
     this.systemProxy = true,
-  }) : profiles = profiles ?? <Profile>[];
+    this.blockOutsideTunnel = false,
+    String? matchSalt,
+  }) : profiles = profiles ?? <Profile>[],
+       matchSalt = _validSalt(matchSalt) ? matchSalt! : newMatchSalt();
 
   final List<Profile> profiles;
 
@@ -54,6 +88,12 @@ class AppState {
   /// "System-wide proxy": set the macOS system SOCKS proxy while connected.
   bool systemProxy;
 
+  /// iOS: "Block traffic outside the VPN" (includeAllNetworks).
+  bool blockOutsideTunnel;
+
+  /// Random per-installation key of [matchKeyFor]; not a secret by itself.
+  final String matchSalt;
+
   String get listen => '$localHost:$port';
 
   AppState copy() => AppState(
@@ -63,16 +103,20 @@ class AppState {
     lastUsedId: lastUsedId,
     port: port,
     systemProxy: systemProxy,
+    blockOutsideTunnel: blockOutsideTunnel,
+    matchSalt: matchSalt,
   );
 
   Map<String, dynamic> toJson() => {
-    'version': 3,
+    'version': stateVersion,
     'profiles': profiles.map((p) => p.toJson()).toList(),
     'selectedId': selectedId,
     'autoSelect': autoSelect,
     'lastUsedId': lastUsedId,
     'port': port,
     'systemProxy': systemProxy,
+    'blockOutsideTunnel': blockOutsideTunnel,
+    'matchSalt': matchSalt,
   };
 
   factory AppState.fromJson(Map<String, dynamic> json) {
@@ -103,8 +147,20 @@ class AppState {
       systemProxy: json['systemProxy'] is bool
           ? json['systemProxy'] as bool
           : true,
+      blockOutsideTunnel: json['blockOutsideTunnel'] == true,
+      matchSalt: json['matchSalt'] as String?,
     );
   }
+}
+
+/// True when a settings file still carries connection details that version
+/// 4 keeps out of it (server, SNI, subject, or a plaintext link).
+bool hasLegacyProfileFields(Map<String, dynamic> json) {
+  final list = json['profiles'];
+  if (list is! List) return false;
+  return list.whereType<Map>().any(
+    (p) => Profile.sensitiveKeys.any(p.containsKey),
+  );
 }
 
 /// Set by platform start-up code where HOME is not meaningful (Android
@@ -117,10 +173,13 @@ String appSupportDir() {
   if (override != null) return override;
   final home = Platform.environment['HOME'];
   if (Platform.isWindows) {
-    final appData = Platform.environment['APPDATA'];
-    // Fixed storage folder name: existing installs keep their data and the
-    // system-proxy restore journal here, so it must not change.
-    if (appData != null) return '$appData\\SingLinkLabs\\SingLinkVPN';
+    // Local (non-roaming) AppData, next to the DPAPI-protected credentials:
+    // settings and the system-proxy journal never follow a roaming profile
+    // to other machines (App F-07). Earlier versions used roaming %APPDATA%;
+    // migrateWindowsRoamingData moves those files here at start-up.
+    final local =
+        Platform.environment['LOCALAPPDATA'] ?? Platform.environment['APPDATA'];
+    if (local != null) return '$local\\SingLinkLabs\\SingLinkVPN';
   }
   if ((Platform.isMacOS || Platform.isIOS) && home != null) {
     return '$home/Library/Application Support/com.singlinklabs.singlinkvpn';
@@ -128,6 +187,84 @@ String appSupportDir() {
     return '$home/.config/singlink_vpn';
   }
   return '${Directory.systemTemp.path}/singlink_vpn';
+}
+
+/// Windows (App F-07): moves settings written by earlier versions from the
+/// roaming `%APPDATA%` folder to local AppData, so they no longer follow a
+/// roaming profile. Runs before anything reads them. If the move fails, this
+/// run keeps using the roaming folder and the next start retries.
+Future<void> migrateWindowsRoamingData({
+  Map<String, String>? environment,
+}) async {
+  final env = environment ?? Platform.environment;
+  final roaming = env['APPDATA'];
+  final local = env['LOCALAPPDATA'];
+  if (roaming == null || local == null) return;
+  final from = Directory('$roaming\\SingLinkLabs\\SingLinkVPN');
+  try {
+    await migrateDataDirectory(
+      from,
+      Directory('$local\\SingLinkLabs\\SingLinkVPN'),
+    );
+  } catch (_) {
+    appSupportDirOverride = from.path;
+  }
+}
+
+/// Files an earlier version kept in the app's data folder.
+const _movableDataFiles = [
+  'state.json.credential-txn',
+  'system-proxy-restore.json',
+  'state.json', // last: its presence marks a completed move
+];
+
+/// Moves the app's data files from [from] to [to]. Each file is copied and
+/// renamed into place before any original is removed, so an interrupted move
+/// is simply repeated. Once [to] has settings it is authoritative: the copies
+/// in [from] (which may hold an older format with connection details) are
+/// removed on every start, never copied over it, and leftover staging files
+/// are cleaned up.
+Future<void> migrateDataDirectory(Directory from, Directory to) async {
+  final sep = Platform.pathSeparator;
+  if (from.absolute.path == to.absolute.path) return;
+  if (await to.exists()) {
+    for (final name in _movableDataFiles) {
+      await _deleteQuietly(File('${to.path}$sep$name.migrating'));
+    }
+  }
+  if (!await from.exists()) return;
+  if (!await File('${to.path}${sep}state.json').exists()) {
+    await to.create(recursive: true);
+    for (final name in _movableDataFiles) {
+      final source = File('${from.path}$sep$name');
+      if (!await source.exists()) continue;
+      final target = File('${to.path}$sep$name');
+      final staged = File('${target.path}.migrating');
+      await staged.writeAsBytes(await source.readAsBytes(), flush: true);
+      await staged.rename(target.path);
+    }
+  }
+  for (final name in [
+    ..._movableDataFiles,
+    // Older versions' interrupted writes; a metadata temp may hold a link.
+    for (final n in _movableDataFiles) '$n.tmp',
+  ]) {
+    await _deleteQuietly(File('${from.path}$sep$name'));
+  }
+  try {
+    await from.delete(); // only when empty
+  } on FileSystemException {
+    // Other files (not ours to judge) stay.
+  }
+}
+
+/// Best effort: a locked file is retried at the next start.
+Future<void> _deleteQuietly(File file) async {
+  try {
+    if (await file.exists()) await file.delete();
+  } on FileSystemException {
+    // Retried at the next start.
+  }
 }
 
 class AppStoreException implements Exception {
@@ -176,15 +313,39 @@ class AppStore {
     }
     final state = AppState.fromJson(json);
     await _recoverJournal(state.profiles.map((p) => p.secretRef).toSet());
-    if ((json['version'] as num? ?? 1) < 3 ||
-        state.profiles.any((p) => p.link.isNotEmpty)) {
+    final version = json['version'] as num? ?? 1;
+    if (version < 3 || state.profiles.any((p) => p.link.isNotEmpty)) {
       // Do not erase legacy credentials until protected write+readback and
       // metadata rename both succeed. A failure is visible, never a fallback.
+      return await _save(state);
+    }
+    if (version < stateVersion || hasLegacyProfileFields(json)) {
+      // F-07: server, SNI and subject leave the ordinary file only once each
+      // profile's protected record (which holds the link they come from) is
+      // confirmed readable. A locked store keeps the old file for retry.
+      await _confirmProtectedRecords(state);
       return await _save(state);
     }
     await _retryCleanup(json);
     return state;
   });
+
+  /// Reads back every profile's protected record before connection details
+  /// are dropped from the settings file. A missing or corrupt record means
+  /// the profile was already unusable (re-import repairs it, matched by its
+  /// [Profile.matchKey]); it does not block the migration. Any other failure
+  /// (locked, unavailable) aborts it without touching the file.
+  Future<void> _confirmProtectedRecords(AppState state) async {
+    for (final profile in state.profiles) {
+      if (profile.link.isNotEmpty) continue; // protected by _save itself
+      try {
+        await readCredential(profile);
+      } on SecretStoreException catch (e) {
+        if (e.code == 'missing' || e.code == 'corrupt') continue;
+        throw const AppStoreException('locked');
+      }
+    }
+  }
 
   /// Explicit, user-confirmed recovery when settings cannot be loaded at all
   /// (corrupt metadata, or a legacy migration whose secret store is
@@ -330,6 +491,10 @@ class AppStore {
   }
 
   Future<void> _writeMetadata(Map<String, dynamic> metadata) async {
+    if (hasLegacyProfileFields(metadata)) {
+      // Defence in depth for F-07: never write connection details.
+      throw const AppStoreException('metadata');
+    }
     final tmp = File('${file.path}.tmp');
     try {
       await tmp.writeAsString(
@@ -396,7 +561,14 @@ class AppStore {
     );
     try {
       for (final profile in state.profiles) {
-        staged.add(await migration.protect(profile));
+        var protected = await migration.protect(profile);
+        final key = matchKeyFor(
+          state.matchSalt,
+          protected.server,
+          protected.subject,
+        );
+        if (key.isNotEmpty) protected = protected.withDetails(matchKey: key);
+        staged.add(protected);
       }
       final nextRefs = staged.map((p) => p.secretRef).toSet();
       final pending = {
@@ -429,6 +601,8 @@ class AppStore {
       lastUsedId: state.lastUsedId,
       port: state.port,
       systemProxy: state.systemProxy,
+      blockOutsideTunnel: state.blockOutsideTunnel,
+      matchSalt: state.matchSalt,
     );
   }
 }

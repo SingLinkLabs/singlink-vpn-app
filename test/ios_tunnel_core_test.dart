@@ -62,8 +62,29 @@ void main() {
     );
     expect(r.ok, isTrue);
     expect(calls.single.method, 'start');
-    expect(calls.single.arguments, {'reference': reference});
+    expect(calls.single.arguments, {
+      'reference': reference,
+      'blockOutsideTunnel': false,
+    });
   });
+
+  test(
+    'App F-04: the block-outside-tunnel choice reaches the tunnel',
+    () async {
+      replies['start'] = (_) => '{"ok":true}';
+      expect(core.supportsBlockOutsideTunnel, isTrue);
+      final r = await core.startProtected(
+        reference: reference,
+        listen: 'ignored',
+        blockOutsideTunnel: true,
+      );
+      expect(r.ok, isTrue);
+      expect(calls.single.arguments, {
+        'reference': reference,
+        'blockOutsideTunnel': true,
+      });
+    },
+  );
 
   test('start errors are mapped to friendly messages', () async {
     replies['start'] = (_) =>
