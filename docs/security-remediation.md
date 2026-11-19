@@ -165,10 +165,14 @@ Extension termination needs a signed device; the Simulator cannot run the tunnel
 ### Protocol pin and handshake diagnostic
 
 The core is pinned to the remediated protocol revision
-`7822e49cc84ee421fa9d0dbddd8fff6257019be9` (`core/protocol-revision.txt`, the
-`core/go.mod` pseudo-version with its UTC commit time). That revision adds the
-node-side F-01 fix (a copy of an admitted first flight never gets a status-only
-answer); the client and the wire format are unchanged. Its client reports a refused
+`c59a42ddc03e64b9b9686b683dcc32f6263d1c6b` (`core/protocol-revision.txt`, the
+`core/go.mod` pseudo-version with its UTC commit time). That revision addresses
+the VPN Labs protocol follow-up (VPNL-2026-0013 F-02, F-03, F-04, F-10:
+supported Go toolchain and govulncheck, IPv6 special-purpose blocks in the
+default destination policy, the handshake cryptography slot released on panic,
+public commit references); the earlier revision 7822e49 added the node-side
+F-01 fix (a copy of an admitted first flight never gets a status-only answer).
+The client engine API and the wire format are unchanged. Its client reports a refused
 handshake as a possible protocol draft or server-key mismatch (keeping the older
 "node rejected the credentials" prefix); the app shows "Couldn't connect: this
 server uses a different protocol version or key. Update the app or re-import the
